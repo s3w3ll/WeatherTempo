@@ -1,0 +1,7 @@
+name               = "weathertempo-pws-proxy"
+main               = "pws-proxy.js"
+compatibility_date = "2024-01-01"
+
+# The WEATHER_API secret is stored via:
+#   npx wrangler secret put WEATHER_API
+# Do NOT add it here — secrets must never appear in source control.

@@ -17,6 +17,12 @@
 
   const TZ = "Pacific/Auckland";
 
+  // ── Live refresh (Cloudflare Worker proxy) ───────────────────────────────
+  // Paste the Worker URL here after running `npx wrangler deploy` in /workers.
+  // Leave blank to disable live refresh (card shows JSON data only).
+  const WORKER_URL = "https://weathertempo-pws-proxy.forgesync.workers.dev";
+  const REFRESH_INTERVAL_MS = 5 * 60 * 1000;   // 5 minutes
+
   // ── Formatters ───────────────────────────────────────────────────────────
   function fmtTime(utcSec, opts = {}) {
     if (!utcSec) return "—";
@@ -151,6 +157,75 @@
   function degToCard(deg) {
     const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
     return dirs[Math.round(deg / 22.5) % 16];
+  }
+
+  // ── Live refresh helpers ──────────────────────────────────────────────────
+
+  /**
+   * Merge live PWS payload onto existing data.current, preserving fields the
+   * Worker does not supply (condition, sunriseUtc, sunsetUtc, moonPhase, …).
+   */
+  function buildCurrentFromPws(payload, existing) {
+    return Object.assign({}, existing, {
+      temp:          payload.temp,
+      feelsLike:     payload.feelsLike,
+      humidity:      payload.humidity,
+      windSpeed:     payload.windSpeed,
+      windGust:      payload.windGust,
+      windDirection: payload.windDirection,
+      windCardinal:  payload.windCardinal,
+      pressure:      payload.pressure,
+      uvIndex:       payload.uvIndex,
+    });
+  }
+
+  /**
+   * Push live values to the DOM — only the 7 elements that the Worker covers.
+   * Does NOT touch: current-condition, today-high/low, sunrise, sunset, moon-*.
+   */
+  function updateLiveFields(c, fetchedAt) {
+    const el = id => document.getElementById(id);
+    el("current-temp").textContent  = c.temp      != null ? `${Math.round(c.temp)}°`                  : "—°";
+    el("current-feels").textContent = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°`  : "";
+    el("humidity").textContent      = c.humidity  != null ? `${c.humidity}%`                          : "—";
+    el("wind").textContent          = c.windSpeed != null ? `${c.windSpeed} km/h`                     : "—";
+    el("wind-dir").textContent      = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
+    el("pressure").textContent      = c.pressure  != null ? `${Math.round(c.pressure)} hPa`           : "—";
+    el("uv-index").textContent      = uvLabel(c.uvIndex);
+
+    // Replace "28 min ago" with "Live · 11:14 am" after first successful tick
+    if (fetchedAt) {
+      const t = new Date(fetchedAt).toLocaleTimeString("en-NZ", {
+        timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true,
+      });
+      el("last-updated").textContent = `Live · ${t}`;
+    }
+  }
+
+  /**
+   * Start the 5-minute live refresh loop.
+   * Fires one tick immediately on page load (no cold-start delay).
+   * Errors are swallowed — existing card values remain visible.
+   */
+  function startLiveRefresh(data) {
+    if (!WORKER_URL) return;   // Worker not yet deployed — silently skip
+
+    async function tick() {
+      try {
+        const resp = await fetch(WORKER_URL, { cache: "no-store" });
+        if (!resp.ok) throw new Error(`Worker HTTP ${resp.status}`);
+        const payload = await resp.json();
+        if (payload.error) throw new Error(payload.error);
+        data.current = buildCurrentFromPws(payload, data.current);
+        updateLiveFields(data.current, payload.fetchedAt);
+      } catch (err) {
+        console.warn("[WeatherTempo] Live refresh failed:", err.message);
+        // Silent fail — card keeps showing last known values
+      }
+    }
+
+    tick();                               // immediate first read
+    setInterval(tick, REFRESH_INTERVAL_MS);
   }
 
   // ── Tides ─────────────────────────────────────────────────────────────────
@@ -416,6 +491,7 @@
 
     populateCard(data);
     initChart(data.hourly, data.current);
+    startLiveRefresh(data);
   }
 
   document.addEventListener("DOMContentLoaded", boot);
