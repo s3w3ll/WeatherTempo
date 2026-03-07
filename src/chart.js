@@ -1,0 +1,552 @@
+/**
+ * chart.js — WeatherGraph-style canvas chart renderer.
+ *
+ * Layers (bottom → top):
+ *   1. Background (day/night gradient bands)
+ *   2. Cloud cover (blurred translucent ellipses)
+ *   3. Temperature area (smooth filled region between temp & feels-like)
+ *   4. Temperature line (orange smooth curve)
+ *   5. Feels-like line (cyan dashed)
+ *   6. Precipitation bars (green → amber → red)
+ *   7. Wind indicators  ← **user contribution below**
+ *   8. Pressure line (secondary axis, dashed)
+ *   9. "Now" marker (vertical gradient line)
+ *  10. Day dividers + labels
+ *  11. Time axis (hours)
+ *  12. Temperature labels at peaks/troughs
+ */
+
+(function (global) {
+  "use strict";
+
+  // ── Layout constants ─────────────────────────────────────────────────────
+  const PX_PER_HOUR = 38;   // horizontal scale
+
+  const ZONE = {
+    top:         0,
+    cloudTop:    8,
+    cloudBot:    50,
+    tempTop:     45,
+    tempBot:    230,
+    precipTop:  235,
+    precipBot:  268,
+    windTop:    272,
+    windBot:    305,
+    timeTop:    308,
+    height:     324,
+  };
+
+  const PAD = { left: 6, right: 6 };
+
+  // ── Colour helpers ───────────────────────────────────────────────────────
+  const C = {
+    bg:         "#09131f",
+    bgDay:      "rgba(28,74,150,0.14)",
+    tempFill:   ["rgba(255,160,30,0.05)", "rgba(255,140,20,0.38)"],
+    tempLine:   "#ffa820",
+    feelsLine:  "rgba(60,220,255,0.75)",
+    precipLow:  "#30d67a",
+    precipMid:  "#f0b030",
+    precipHi:   "#ff5055",
+    pressLine:  "rgba(255,255,255,0.32)",
+    nowLine:    "rgba(255,255,255,0.65)",
+    grid:       "rgba(255,255,255,0.06)",
+    dayDiv:     "rgba(255,255,255,0.10)",
+    text:       "#e4eaf4",
+    textMuted:  "#5a7a9a",
+  };
+
+  // ── Utility ──────────────────────────────────────────────────────────────
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function lerp(a, b, t)    { return a + (b - a) * t; }
+
+  function precipColor(intensity) {
+    // intensity 0-1 maps green→amber→red
+    if (intensity < 0.5) {
+      const t = intensity * 2;
+      return `rgb(${Math.round(lerp(48,240,t))},${Math.round(lerp(214,176,t))},${Math.round(lerp(122,48,t))})`;
+    }
+    const t = (intensity - 0.5) * 2;
+    return `rgb(${Math.round(lerp(240,255,t))},${Math.round(lerp(176,80,t))},${Math.round(lerp(48,85,t))})`;
+  }
+
+  /**
+   * Catmull-Rom → Bezier smooth curve.
+   * Draws a smooth path through `pts` (array of {x, y}).
+   * If `close` is true, closes the path after last point.
+   */
+  function smoothPath(ctx, pts, startNew = true) {
+    if (pts.length < 2) return;
+    if (startNew) ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      const p0 = pts[Math.max(0, i - 2)];
+      const p1 = pts[i - 1];
+      const p2 = pts[i];
+      const p3 = pts[Math.min(pts.length - 1, i + 1)];
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    }
+  }
+
+  // ── WeatherChart class ───────────────────────────────────────────────────
+  class WeatherChart {
+    /**
+     * @param {HTMLCanvasElement} canvas
+     * @param {object[]} hours  Hourly forecast data array.
+     * @param {object}   meta   { sunriseUtc, sunsetUtc } (UTC unix seconds)
+     */
+    constructor(canvas, hours, meta = {}) {
+      this.canvas = canvas;
+      this.hours  = hours;
+      this.meta   = meta;
+      this._dpr   = window.devicePixelRatio || 1;
+      this._setup();
+    }
+
+    // ── Setup ──────────────────────────────────────────────────────────────
+    _setup() {
+      const { hours } = this;
+      const W = PAD.left + hours.length * PX_PER_HOUR + PAD.right;
+      const H = ZONE.height;
+
+      this.canvas.style.width  = W + "px";
+      this.canvas.style.height = H + "px";
+      this.canvas.width  = W * this._dpr;
+      this.canvas.height = H * this._dpr;
+
+      this.ctx = this.canvas.getContext("2d");
+      this.ctx.scale(this._dpr, this._dpr);
+
+      this.W = W;
+      this.H = H;
+
+      // Compute temperature range across all hours
+      const temps = hours.map(h => h.temperature).filter(v => v != null);
+      const feels = hours.map(h => h.temperatureFeelsLike).filter(v => v != null);
+      const all   = [...temps, ...feels];
+      this._tMin  = Math.min(...all) - 2;
+      this._tMax  = Math.max(...all) + 2;
+
+      // Compute pressure range
+      const pvals = hours.map(h => h.pressureMeanSeaLevel).filter(v => v != null);
+      this._pMin  = pvals.length ? Math.min(...pvals) - 2 : 1000;
+      this._pMax  = pvals.length ? Math.max(...pvals) + 2 : 1030;
+
+      // Max precipitation for bar scaling
+      const qpfs  = hours.map(h => h.qpf || 0);
+      this._qMax  = Math.max(1, ...qpfs);
+
+      // "Now" index
+      const nowSec = Date.now() / 1000;
+      this._nowIdx = hours.findIndex(h => (h.validTimeUtc || 0) >= nowSec);
+      if (this._nowIdx < 0) this._nowIdx = 0;
+    }
+
+    // ── Coordinate helpers ────────────────────────────────────────────────
+    hourX(i)   { return PAD.left + i * PX_PER_HOUR + PX_PER_HOUR / 2; }
+    tempY(t)   { return ZONE.tempBot - (t - this._tMin) / (this._tMax - this._tMin) * (ZONE.tempBot - ZONE.tempTop); }
+    pressY(p)  { return ZONE.tempBot - (p - this._pMin) / (this._pMax - this._pMin) * (ZONE.tempBot - ZONE.tempTop); }
+
+    // ── Render entry point ─────────────────────────────────────────────────
+    render() {
+      const { ctx } = this;
+      ctx.clearRect(0, 0, this.W, this.H);
+
+      this._drawBackground();
+      this._drawCloudCover();
+      this._drawTemperatureArea();
+      this._drawTemperatureLine();
+      this._drawFeelsLikeLine();
+      this._drawPressureLine();
+      this._drawPrecipBars();
+      this.drawWindIndicators(ctx, this.hours, this._windLayout());
+      this._drawDayDividers();
+      this._drawNowMarker();
+      this._drawTimeAxis();
+      this._drawTempLabels();
+    }
+
+    // ── 1. Background ─────────────────────────────────────────────────────
+    _drawBackground() {
+      const { ctx, W, H, hours } = this;
+
+      // Base dark fill
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle day bands
+      for (let i = 0; i < hours.length; i++) {
+        if (hours[i].dayOrNight === "D") {
+          ctx.fillStyle = C.bgDay;
+          ctx.fillRect(PAD.left + i * PX_PER_HOUR, 0, PX_PER_HOUR, H);
+        }
+      }
+
+      // Subtle horizontal grid lines in temp zone
+      ctx.strokeStyle = C.grid;
+      ctx.lineWidth   = 0.5;
+      const step = Math.ceil((this._tMax - this._tMin) / 5);
+      for (let t = Math.ceil(this._tMin); t <= this._tMax; t += step) {
+        const y = this.tempY(t);
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+    }
+
+    // ── 2. Cloud cover ────────────────────────────────────────────────────
+    _drawCloudCover() {
+      const { ctx, hours } = this;
+      ctx.save();
+      ctx.filter = "blur(18px)";
+      for (let i = 0; i < hours.length; i++) {
+        const cc = (hours[i].cloudCover || 0) / 100;
+        if (cc < 0.15) continue;
+        const x  = this.hourX(i);
+        const ry = 14 * cc;
+        ctx.fillStyle = `rgba(210,230,255,${cc * 0.22})`;
+        ctx.beginPath();
+        ctx.ellipse(x, (ZONE.cloudTop + ZONE.cloudBot) / 2, PX_PER_HOUR * 0.7, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.filter = "none";
+      ctx.restore();
+    }
+
+    // ── 3. Temperature area ───────────────────────────────────────────────
+    _drawTemperatureArea() {
+      const { ctx, hours } = this;
+      const tPts = hours.map((h, i) => ({ x: this.hourX(i), y: this.tempY(h.temperature ?? 0) }));
+      const fPts = hours.map((h, i) => ({ x: this.hourX(i), y: this.tempY(h.temperatureFeelsLike ?? 0) }));
+
+      const grad = ctx.createLinearGradient(0, ZONE.tempTop, 0, ZONE.tempBot);
+      grad.addColorStop(0, C.tempFill[1]);
+      grad.addColorStop(1, C.tempFill[0]);
+
+      ctx.save();
+      ctx.beginPath();
+      smoothPath(ctx, tPts);
+      smoothPath(ctx, [...fPts].reverse(), false);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ── 4. Temperature line ───────────────────────────────────────────────
+    _drawTemperatureLine() {
+      const { ctx, hours } = this;
+      const pts = hours.map((h, i) => ({ x: this.hourX(i), y: this.tempY(h.temperature ?? 0) }));
+      ctx.save();
+      ctx.beginPath();
+      smoothPath(ctx, pts);
+      ctx.strokeStyle = C.tempLine;
+      ctx.lineWidth   = 2.5;
+      ctx.lineJoin    = "round";
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ── 5. Feels-like line ────────────────────────────────────────────────
+    _drawFeelsLikeLine() {
+      const { ctx, hours } = this;
+      const pts = hours.map((h, i) => ({ x: this.hourX(i), y: this.tempY(h.temperatureFeelsLike ?? 0) }));
+      ctx.save();
+      ctx.beginPath();
+      smoothPath(ctx, pts);
+      ctx.strokeStyle = C.feelsLine;
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // ── 6. Pressure line (right-aligned scale) ────────────────────────────
+    _drawPressureLine() {
+      const { ctx, hours } = this;
+      const pts = hours
+        .map((h, i) => h.pressureMeanSeaLevel != null
+          ? { x: this.hourX(i), y: this.pressY(h.pressureMeanSeaLevel) }
+          : null)
+        .filter(Boolean);
+      if (!pts.length) return;
+
+      ctx.save();
+      ctx.beginPath();
+      smoothPath(ctx, pts);
+      ctx.strokeStyle = C.pressLine;
+      ctx.lineWidth   = 1.2;
+      ctx.setLineDash([3, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // ── 7. Precipitation bars ──────────────────────────────────────────────
+    _drawPrecipBars() {
+      const { ctx, hours } = this;
+      const barW  = Math.max(2, PX_PER_HOUR * 0.45);
+      const zoneH = ZONE.precipBot - ZONE.precipTop;
+
+      for (let i = 0; i < hours.length; i++) {
+        const h    = hours[i];
+        const prob = (h.precipChance || 0) / 100;
+        const qpf  = h.qpf || 0;
+
+        // Show a bar if there's any non-negligible probability
+        if (prob < 0.05 && qpf === 0) continue;
+
+        const intensity = clamp(qpf / this._qMax, 0, 1);
+        const height    = Math.max(3, zoneH * clamp(prob * 0.6 + intensity * 0.4, 0.05, 1));
+        const x         = this.hourX(i) - barW / 2;
+        const y         = ZONE.precipBot - height;
+
+        ctx.fillStyle = precipColor(intensity);
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barW, height, [2, 2, 0, 0]);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ── 8. Wind indicators ─────────────────────────────────────────────────
+    /**
+     * Draw wind speed and direction indicators along the wind zone.
+     *
+     * Called with:
+     *   ctx     – CanvasRenderingContext2D, already scaled for HiDPI.
+     *   hours   – the hourly data array; each element has:
+     *               .windSpeed      km/h
+     *               .windDirection  degrees (meteorological: 0=N, 90=E, 180=S, 270=W)
+     *               .windGust       km/h (may be null)
+     *   layout  – pre-computed helpers:
+     *               .x(i)   → canvas X centre for hour i
+     *               .midY   → vertical centre of the wind zone (288 px)
+     *               .height → total height of wind zone (33 px)
+     *
+     * The WeatherGraph style draws:
+     *   • A dashed red/pink horizontal baseline across the zone
+     *   • Every 3rd hour: a small filled arrowhead pointing in the
+     *     direction the wind is BLOWING TOWARD (i.e. 180° from "from")
+     *   • Arrow size scales with wind speed
+     *
+     * Feel free to experiment — wind barbs, colour-coded circles, or
+     * flowing streamlines all work well here.
+     */
+    drawWindIndicators(ctx, hours, layout) {
+      ctx.save();
+
+      // Dashed baseline
+      ctx.strokeStyle = "rgba(255,100,110,0.35)";
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, layout.midY);
+      ctx.lineTo(this.W, layout.midY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const INTERVAL = 3; // draw every 3rd hour
+      const MAX_SPD  = 80; // km/h ceiling for scaling
+
+      for (let i = 0; i < hours.length; i += INTERVAL) {
+        const h = hours[i];
+        if (h.windSpeed == null) continue;
+
+        const x     = layout.x(i);
+        const spd   = clamp(h.windSpeed, 0, MAX_SPD);
+        const t     = spd / MAX_SPD;            // 0-1
+        const scale = lerp(5, 13, t);           // arrow half-length in px
+
+        // windDirection = direction wind comes FROM → point arrow toward destination
+        const angleDeg = (h.windDirection || 0) + 180;
+        const rad      = angleDeg * Math.PI / 180;
+
+        const dx = Math.sin(rad) * scale;
+        const dy = -Math.cos(rad) * scale;
+
+        // Arrow colour: calm=cyan, strong=red
+        const r = Math.round(lerp(60, 255, t));
+        const g = Math.round(lerp(210, 90, t));
+        const b = Math.round(lerp(255, 100, t));
+        ctx.strokeStyle = `rgb(${r},${g},${b})`;
+        ctx.fillStyle   = `rgb(${r},${g},${b})`;
+        ctx.lineWidth   = 1.5;
+
+        // Shaft
+        ctx.beginPath();
+        ctx.moveTo(x - dx * 0.6, layout.midY - dy * 0.6);
+        ctx.lineTo(x + dx * 0.6, layout.midY + dy * 0.6);
+        ctx.stroke();
+
+        // Arrowhead (filled triangle at tip)
+        const tipX = x + dx * 0.6;
+        const tipY = layout.midY + dy * 0.6;
+        const hw   = clamp(scale * 0.45, 2.5, 6);
+        const px   = -dy / scale * hw;
+        const py   =  dx / scale * hw;
+        ctx.beginPath();
+        ctx.moveTo(tipX + dx * 0.5, tipY + dy * 0.5);
+        ctx.lineTo(tipX - dx * 0.3 + px, tipY - dy * 0.3 + py);
+        ctx.lineTo(tipX - dx * 0.3 - px, tipY - dy * 0.3 - py);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    /** Pre-compute wind zone layout helpers. */
+    _windLayout() {
+      const self = this;
+      return {
+        x:      (i) => self.hourX(i),
+        midY:   (ZONE.windTop + ZONE.windBot) / 2,
+        height: ZONE.windBot - ZONE.windTop,
+      };
+    }
+
+    // ── 9. Day dividers ────────────────────────────────────────────────────
+    _drawDayDividers() {
+      const { ctx, H, hours } = this;
+      ctx.save();
+      for (let i = 1; i < hours.length; i++) {
+        const h   = hours[i];
+        const h0  = hours[i - 1];
+        // Detect local midnight crossing (UTC→NZ date change)
+        const d0  = new Date((h0.validTimeUtc || 0) * 1000).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
+        const d1  = new Date((h.validTimeUtc  || 0) * 1000).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
+        if (d0 === d1) continue;
+
+        const x = this.hourX(i) - PX_PER_HOUR / 2;
+
+        // Vertical divider
+        ctx.strokeStyle = C.dayDiv;
+        ctx.lineWidth   = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(x, ZONE.tempTop); ctx.lineTo(x, ZONE.windBot);
+        ctx.stroke();
+
+        // Day label (below time axis region)
+        const label = new Date((h.validTimeUtc || 0) * 1000)
+          .toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland", weekday: "short" })
+          .toUpperCase();
+        ctx.fillStyle  = C.textMuted;
+        ctx.font       = "bold 9px -apple-system, sans-serif";
+        ctx.textAlign  = "left";
+        ctx.fillText(label, x + 4, ZONE.timeTop + 12);
+      }
+      ctx.restore();
+    }
+
+    // ── 10. Now marker ─────────────────────────────────────────────────────
+    _drawNowMarker() {
+      const { ctx, H } = this;
+      const idx = this._nowIdx;
+      if (idx < 0) return;
+
+      const x = this.hourX(idx);
+
+      // Gradient vertical line
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0,   "rgba(255,255,255,0)");
+      grad.addColorStop(0.2, C.nowLine);
+      grad.addColorStop(0.8, C.nowLine);
+      grad.addColorStop(1,   "rgba(255,255,255,0)");
+
+      ctx.save();
+      ctx.strokeStyle = grad;
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, 0); ctx.lineTo(x, H);
+      ctx.stroke();
+
+      // "NOW" label
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.font      = "bold 9px -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("NOW", x, 14);
+
+      // Small circle
+      ctx.beginPath();
+      ctx.arc(x, ZONE.tempTop + 4, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ── 11. Time axis ──────────────────────────────────────────────────────
+    _drawTimeAxis() {
+      const { ctx, hours } = this;
+      ctx.save();
+      ctx.font      = "10px -apple-system, sans-serif";
+      ctx.fillStyle = C.textMuted;
+      ctx.textAlign = "center";
+
+      for (let i = 0; i < hours.length; i++) {
+        const ts = hours[i].validTimeUtc;
+        if (!ts) continue;
+
+        const d    = new Date(ts * 1000);
+        const hour = +d.toLocaleString("en-NZ", { timeZone: "Pacific/Auckland", hour: "numeric", hour12: false });
+
+        // Show label every 3 hours
+        if (hour % 3 !== 0) continue;
+
+        const x   = this.hourX(i);
+        const lbl = hour === 0 ? "12am" : hour === 12 ? "12pm" : hour > 12 ? `${hour - 12}pm` : `${hour}am`;
+        ctx.fillText(lbl, x, ZONE.timeTop + 13);
+      }
+      ctx.restore();
+    }
+
+    // ── 12. Temperature labels at peaks & troughs ─────────────────────────
+    _drawTempLabels() {
+      const { ctx, hours } = this;
+      ctx.save();
+      ctx.font       = "bold 11px -apple-system, sans-serif";
+      ctx.textAlign  = "center";
+      ctx.lineWidth  = 3;
+
+      for (let i = 1; i < hours.length - 1; i++) {
+        const prev = hours[i - 1].temperature ?? 0;
+        const curr = hours[i].temperature     ?? 0;
+        const next = hours[i + 1].temperature ?? 0;
+
+        const isPeak   = curr > prev && curr > next;
+        const isTrough = curr < prev && curr < next;
+
+        if (!isPeak && !isTrough) continue;
+
+        const x    = this.hourX(i);
+        const y    = this.tempY(curr) + (isPeak ? -6 : 14);
+        const lbl  = `${Math.round(curr)}°`;
+
+        ctx.strokeStyle = "rgba(9,19,31,0.7)";
+        ctx.strokeText(lbl, x, y);
+        ctx.fillStyle   = isPeak ? C.tempLine : C.feelsLine;
+        ctx.fillText(lbl, x, y);
+      }
+      ctx.restore();
+    }
+
+    // ── Scroll helper ─────────────────────────────────────────────────────
+    /**
+     * Scroll the parent container so "now" is ~30% from the left edge.
+     * @param {HTMLElement} scrollContainer
+     */
+    scrollToNow(scrollContainer) {
+      const nowX = this.hourX(this._nowIdx);
+      scrollContainer.scrollLeft = nowX - scrollContainer.clientWidth * 0.3;
+    }
+  }
+
+  global.WeatherChart = WeatherChart;
+
+})(window);
