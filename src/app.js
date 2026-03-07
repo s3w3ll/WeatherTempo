@@ -317,6 +317,7 @@
     });
     chart.render();
     chart.scrollToNow(scroll);
+    chart.initHover(scroll);
 
     // Enable drag-to-scroll
     let isDown = false, startX = 0, startLeft = 0;

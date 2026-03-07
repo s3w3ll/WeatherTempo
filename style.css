@@ -33,7 +33,7 @@ body {
 .app {
   max-width: 900px;
   margin: 0 auto;
-  padding: 0 0 60px;
+  padding: 0 0 8px;   /* bottom space handled by chart-section now */
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -337,8 +337,8 @@ body {
 
 /* ── Chart section ──────────────────────────────────────────────────────── */
 .chart-section {
-  margin: 0 0 0;
   position: relative;
+  padding-bottom: 48px;   /* breathing room at page bottom */
 }
 
 .chart-scroll {
@@ -419,4 +419,50 @@ body {
 @media (max-width: 380px) {
   .cond-top { flex-direction: column; }
   .high-low { flex-direction: row; align-self: stretch; justify-content: space-around; }
+}
+
+/* ── Chart hover tooltip ─────────────────────────────────────────────── */
+#chart-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 30;
+  width: 210px;
+  background: rgba(9, 19, 31, 0.93);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.tt-time {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-warm);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.tt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.75;
+}
+
+.tt-label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  flex-shrink: 0;
+}
+
+.tt-val {
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

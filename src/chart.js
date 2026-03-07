@@ -33,7 +33,8 @@
     windTop:    272,
     windBot:    305,
     timeTop:    308,
-    height:     324,
+    dayAxisTop: 324,   // secondary day-name strip below hours
+    height:     340,   // was 324
   };
 
   const PAD = { left: 6, right: 6 };
@@ -166,6 +167,7 @@
       this._drawDayDividers();
       this._drawNowMarker();
       this._drawTimeAxis();
+      this._drawDayAxis();
       this._drawTempLabels();
     }
 
@@ -492,11 +494,10 @@
         const x = this.hourX(i);
 
         if (hour === 0) {
-          // Midnight → show the weekday name as the primary day anchor
-          const dayName = d.toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland", weekday: "short" }).toUpperCase();
-          ctx.font      = "bold 9px -apple-system, sans-serif";
-          ctx.fillStyle = C.text;
-          ctx.fillText(dayName, x, ZONE.timeTop + 13);
+          // Midnight — the day axis strip handles day labelling; show "12am" like any hour
+          ctx.font      = "10px -apple-system, sans-serif";
+          ctx.fillStyle = C.textMuted;
+          ctx.fillText("12am", x, ZONE.timeTop + 13);
         } else {
           const lbl = hour === 12 ? "12pm" : hour > 12 ? `${hour - 12}pm` : `${hour}am`;
           ctx.font      = "10px -apple-system, sans-serif";
@@ -535,6 +536,184 @@
         ctx.fillText(lbl, x, y);
       }
       ctx.restore();
+    }
+
+    // ── 11b. Day axis (below hours) ────────────────────────────────────────
+    _drawDayAxis() {
+      const { ctx, hours, W } = this;
+      ctx.save();
+
+      // Slightly darkened background strip
+      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      ctx.fillRect(0, ZONE.dayAxisTop, W, ZONE.height - ZONE.dayAxisTop);
+
+      // Top border
+      ctx.strokeStyle = C.dayDiv;
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, ZONE.dayAxisTop);
+      ctx.lineTo(W, ZONE.dayAxisTop);
+      ctx.stroke();
+
+      // Collect first hour-index for each calendar day
+      const boundaries = [0];
+      for (let i = 1; i < hours.length; i++) {
+        const d0 = new Date((hours[i - 1].validTimeUtc || 0) * 1000)
+          .toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
+        const d1 = new Date((hours[i].validTimeUtc  || 0) * 1000)
+          .toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
+        if (d0 !== d1) boundaries.push(i);
+      }
+      boundaries.push(hours.length); // sentinel
+
+      ctx.textAlign = "center";
+      for (let b = 0; b < boundaries.length - 1; b++) {
+        const startI = boundaries[b];
+        const endI   = boundaries[b + 1] - 1;
+
+        const x0   = this.hourX(startI) - PX_PER_HOUR / 2;
+        const x1   = this.hourX(endI)   + PX_PER_HOUR / 2;
+        const cx   = (x0 + x1) / 2;
+        const pixW = x1 - x0;
+
+        const d       = new Date((hours[startI].validTimeUtc || 0) * 1000);
+        const weekday = d.toLocaleDateString("en-NZ", {
+          timeZone: "Pacific/Auckland",
+          weekday:  pixW > 100 ? "long" : "short",
+        });
+
+        ctx.font      = "bold 9px -apple-system, sans-serif";
+        ctx.fillStyle = C.text;
+        ctx.fillText(weekday, cx, ZONE.dayAxisTop + 12);
+
+        // Vertical divider between days
+        if (b > 0) {
+          const divX = this.hourX(boundaries[b]) - PX_PER_HOUR / 2;
+          ctx.strokeStyle = C.dayDiv;
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          ctx.moveTo(divX, ZONE.dayAxisTop);
+          ctx.lineTo(divX, ZONE.height);
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // ── Hover tooltip ──────────────────────────────────────────────────────
+    /**
+     * Attach cursor-line + tooltip hover to the chart scroll container.
+     * Creates an overlay canvas for the hover line (avoids repainting the
+     * main canvas) and a floating <div> for the data tooltip.
+     * @param {HTMLElement} scrollContainer
+     */
+    initHover(scrollContainer) {
+      const section = scrollContainer.parentElement; // .chart-section
+      const hours   = this.hours;
+      const self    = this;
+      const TZ      = "Pacific/Auckland";
+
+      // Overlay canvas (pointer-events: none — mouse passes through)
+      const overlay = document.createElement("canvas");
+      overlay.style.cssText =
+        "position:absolute;top:0;left:0;pointer-events:none;" +
+        `width:${this.W}px;height:${this.H}px;`;
+      overlay.width  = this.W * this._dpr;
+      overlay.height = this.H * this._dpr;
+      scrollContainer.style.position = "relative";
+      scrollContainer.appendChild(overlay);
+      const oc = overlay.getContext("2d");
+      oc.scale(this._dpr, this._dpr);
+
+      // Tooltip element (absolute within chart-section)
+      const tip = document.createElement("div");
+      tip.id = "chart-tooltip";
+      section.appendChild(tip);
+
+      function showHover(e) {
+        const rect   = scrollContainer.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left + scrollContainer.scrollLeft;
+        const rawIdx = Math.round((mouseX - PAD.left - PX_PER_HOUR / 2) / PX_PER_HOUR);
+        const i      = Math.max(0, Math.min(hours.length - 1, rawIdx));
+        const h      = hours[i];
+
+        // Draw cursor line on overlay canvas
+        oc.clearRect(0, 0, self.W, self.H);
+        const x    = self.hourX(i);
+        const grad = oc.createLinearGradient(0, 0, 0, self.H);
+        grad.addColorStop(0,    "rgba(255,255,255,0)");
+        grad.addColorStop(0.08, "rgba(255,255,255,0.55)");
+        grad.addColorStop(0.92, "rgba(255,255,255,0.55)");
+        grad.addColorStop(1,    "rgba(255,255,255,0)");
+        oc.save();
+        oc.strokeStyle = grad;
+        oc.lineWidth   = 1;
+        oc.beginPath();
+        oc.moveTo(x, 0);
+        oc.lineTo(x, self.H);
+        oc.stroke();
+
+        // Dot on the temperature curve
+        const ty = self.tempY(h.temperature ?? 0);
+        oc.fillStyle = C.tempLine;
+        oc.beginPath();
+        oc.arc(x, ty, 4, 0, Math.PI * 2);
+        oc.fill();
+        oc.restore();
+
+        // Build and position the tooltip
+        const ts = h.validTimeUtc
+          ? new Date(h.validTimeUtc * 1000).toLocaleString("en-NZ", {
+              timeZone: TZ, weekday: "short", month: "short",
+              day: "numeric", hour: "numeric", minute: "2-digit", hour12: true,
+            })
+          : "";
+
+        tip.innerHTML     = self._tooltipHTML(h, ts);
+        tip.style.display = "block";
+
+        // Flip tooltip left when near the right edge
+        const sectionRect = section.getBoundingClientRect();
+        const cursorLeft  = e.clientX - sectionRect.left;
+        const TIP_W       = 210;
+        const flip        = cursorLeft + TIP_W + 20 > sectionRect.width;
+        tip.style.left    = (flip ? cursorLeft - TIP_W - 12 : cursorLeft + 16) + "px";
+        tip.style.top     = "24px";
+      }
+
+      function hideHover() {
+        oc.clearRect(0, 0, self.W, self.H);
+        tip.style.display = "none";
+      }
+
+      scrollContainer.addEventListener("mousemove",  showHover);
+      scrollContainer.addEventListener("mouseleave", hideHover);
+    }
+
+    /** @private HTML content for the hover tooltip. */
+    _tooltipHTML(h, ts) {
+      const row  = (lbl, val) =>
+        `<div class="tt-row"><span class="tt-label">${lbl}</span><span class="tt-val">${val}</span></div>`;
+      const fmt  = (v, unit) => v != null ? `${v}${unit}` : "—";
+      const fmtR = (v, unit) => v != null ? `${Math.round(v)}${unit}` : "—";
+      const card = h.windDirectionCardinal || "";
+      const wind = h.windSpeed != null ? `${h.windSpeed} km/h ${card}`.trim() : "—";
+      return [
+        `<div class="tt-time">${ts}</div>`,
+        row("Temp",          fmtR(h.temperature,          "°")),
+        row("Feels like",    fmtR(h.temperatureFeelsLike, "°")),
+        row("Condition",     h.wxPhraseMedium || "—"),
+        row("Humidity",      fmt(h.relativeHumidity,      "%")),
+        row("Wind",          wind),
+        row("Gusts",         h.windGust != null ? `${h.windGust} km/h` : "—"),
+        row("Rain chance",   fmt(h.precipChance,          "%")),
+        row("Precipitation", h.qpf != null ? `${h.qpf} mm` : "—"),
+        row("Pressure",      h.pressureMeanSeaLevel != null
+          ? `${Math.round(h.pressureMeanSeaLevel)} hPa` : "—"),
+        row("UV index",      h.uvIndex != null ? String(h.uvIndex) : "—"),
+        row("Cloud cover",   fmt(h.cloudCover,            "%")),
+      ].join("");
     }
 
     // ── Scroll helper ─────────────────────────────────────────────────────
