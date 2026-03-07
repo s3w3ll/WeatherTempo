@@ -62,26 +62,46 @@
     return `${idx} Extreme`;
   }
 
-  // ── Today high/low from hourly data ──────────────────────────────────────
-  function todayHighLow(hourly) {
+  // ── Today high/low ────────────────────────────────────────────────────────
+  // Uses calendarDayTemperatureMax/Min from daily[0] for midnight-to-midnight
+  // accuracy (these values never go null, unlike temperatureMax which goes null
+  // after the daily peak has passed). Times of occurrence are derived from the
+  // hourly forecast window only when the peak is still upcoming (i.e. the
+  // forecast's max/min is within 1° of the calendar-day value).
+  function todayHighLow(hourly, daily) {
+    const d0     = (daily || [])[0];
+    const calMax = d0?.calendarDayTemperatureMax ?? null;
+    const calMin = d0?.calendarDayTemperatureMin ?? null;
+
+    // Filter today's hours from the hourly forecast (contains only future hours)
     const nowDate = new Date().toLocaleDateString("en-NZ", {
       timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
     });
-
     const todayHours = hourly.filter(h => {
       if (!h.validTimeUtc) return false;
       return new Date(h.validTimeUtc * 1000)
         .toLocaleDateString("en-NZ", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }) === nowDate;
     });
 
-    if (!todayHours.length) return null;
+    // Resolve times: only show a time if the extremum is still in the forecast
+    // window — if the forecast peak matches the calendar-day peak (within 1°),
+    // the event is upcoming; otherwise it already occurred ("—" is shown).
+    let hiTime = null, loTime = null;
+    if (todayHours.length) {
+      const fHi = todayHours.reduce((a, b) => (a.temperature > b.temperature ? a : b));
+      const fLo = todayHours.reduce((a, b) => (a.temperature < b.temperature ? a : b));
+      if (calMax != null && Math.abs(fHi.temperature - calMax) <= 1) hiTime = fHi.validTimeUtc;
+      if (calMin != null && Math.abs(fLo.temperature - calMin) <= 1) loTime = fLo.validTimeUtc;
+    }
 
-    const hi = todayHours.reduce((a, b) => (a.temperature > b.temperature ? a : b));
-    const lo = todayHours.reduce((a, b) => (a.temperature < b.temperature ? a : b));
+    // Fall back to hourly-only values if daily data isn't present
+    const highTemp = calMax ?? (todayHours.length ? Math.max(...todayHours.map(h => h.temperature)) : null);
+    const lowTemp  = calMin ?? (todayHours.length ? Math.min(...todayHours.map(h => h.temperature)) : null);
 
+    if (highTemp == null && lowTemp == null) return null;
     return {
-      high: { temp: hi.temperature, utcSec: hi.validTimeUtc },
-      low:  { temp: lo.temperature, utcSec: lo.validTimeUtc },
+      high: { temp: highTemp, utcSec: hiTime },
+      low:  { temp: lowTemp,  utcSec: loTime },
     };
   }
 
@@ -99,8 +119,8 @@
     el("current-condition").textContent = c.condition || c.cloudPhrase || "—";
     el("current-feels").textContent    = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°` : "";
 
-    // Today high / low (prefer computed from hourly; fall back to API 24h max/min)
-    const hl = todayHighLow(data.hourly || []);
+    // Today high / low — uses calendarDay values from daily[0] for whole-day accuracy
+    const hl = todayHighLow(data.hourly || [], data.daily || []);
     if (hl) {
       el("today-high").textContent      = `${Math.round(hl.high.temp)}°`;
       el("today-high-time").textContent = fmtHourOnly(hl.high.utcSec);
@@ -351,6 +371,16 @@
     }
 
     const nowTs = Math.round(Date.now() / 1000);
+
+    // Build a daily entry per day — calendarDayTemperatureMax/Min are the
+    // midnight-to-midnight extrema of the cosine curve (peak 25° at 2pm, 11° at 2am)
+    const daily = Array.from({ length: 5 }, (_, d) => ({
+      calendarDayTemperatureMax: 25 - d * 0.5,   // slight cooling trend
+      calendarDayTemperatureMin: 11 - d * 0.3,
+      temperatureMax:            25 - d * 0.5,
+      temperatureMin:            11 - d * 0.3,
+    }));
+
     return {
       meta:    { updated: new Date().toISOString(), location: "Christchurch, New Zealand (sample)", lat: -43.5321, lon: 172.6362 },
       current: {
@@ -363,8 +393,9 @@
         sunriseUtc: nowTs - 3 * 3600,   // approximate: 3 h ago
         sunsetUtc:  nowTs + 6 * 3600,   // approximate: 6 h ahead
       },
-      today: { moonPhase: "Waxing Crescent", moonPhaseCode: "WXC", moonPhaseDay: 5 },
+      today:  { moonPhase: "Waxing Crescent", moonPhaseCode: "WXC", moonPhaseDay: 5 },
       hourly: hours,
+      daily,
     };
   }
 
