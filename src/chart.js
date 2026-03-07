@@ -425,22 +425,13 @@
 
         const x = this.hourX(i) - PX_PER_HOUR / 2;
 
-        // Vertical divider
+        // Vertical divider (day name is now rendered in _drawTimeAxis at midnight)
         ctx.strokeStyle = C.dayDiv;
         ctx.lineWidth   = 1;
         ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(x, ZONE.tempTop); ctx.lineTo(x, ZONE.windBot);
         ctx.stroke();
-
-        // Day label (below time axis region)
-        const label = new Date((h.validTimeUtc || 0) * 1000)
-          .toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland", weekday: "short" })
-          .toUpperCase();
-        ctx.fillStyle  = C.textMuted;
-        ctx.font       = "bold 9px -apple-system, sans-serif";
-        ctx.textAlign  = "left";
-        ctx.fillText(label, x + 4, ZONE.timeTop + 12);
       }
       ctx.restore();
     }
@@ -485,8 +476,6 @@
     _drawTimeAxis() {
       const { ctx, hours } = this;
       ctx.save();
-      ctx.font      = "10px -apple-system, sans-serif";
-      ctx.fillStyle = C.textMuted;
       ctx.textAlign = "center";
 
       for (let i = 0; i < hours.length; i++) {
@@ -494,14 +483,26 @@
         if (!ts) continue;
 
         const d    = new Date(ts * 1000);
-        const hour = +d.toLocaleString("en-NZ", { timeZone: "Pacific/Auckland", hour: "numeric", hour12: false });
+        // % 24 guards against the ICU quirk where midnight returns "24" not "0"
+        const hour = +d.toLocaleString("en-NZ", { timeZone: "Pacific/Auckland", hour: "numeric", hour12: false }) % 24;
 
         // Show label every 3 hours
         if (hour % 3 !== 0) continue;
 
-        const x   = this.hourX(i);
-        const lbl = hour === 0 ? "12am" : hour === 12 ? "12pm" : hour > 12 ? `${hour - 12}pm` : `${hour}am`;
-        ctx.fillText(lbl, x, ZONE.timeTop + 13);
+        const x = this.hourX(i);
+
+        if (hour === 0) {
+          // Midnight → show the weekday name as the primary day anchor
+          const dayName = d.toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland", weekday: "short" }).toUpperCase();
+          ctx.font      = "bold 9px -apple-system, sans-serif";
+          ctx.fillStyle = C.text;
+          ctx.fillText(dayName, x, ZONE.timeTop + 13);
+        } else {
+          const lbl = hour === 12 ? "12pm" : hour > 12 ? `${hour - 12}pm` : `${hour}am`;
+          ctx.font      = "10px -apple-system, sans-serif";
+          ctx.fillStyle = C.textMuted;
+          ctx.fillText(lbl, x, ZONE.timeTop + 13);
+        }
       }
       ctx.restore();
     }
