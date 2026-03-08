@@ -29,14 +29,14 @@
     cloudTop:    8,
     cloudBot:    50,
     tempTop:     45,
-    tempBot:    230,
-    precipTop:  235,
-    precipBot:  268,
-    windTop:    272,
-    windBot:    305,
-    timeTop:    308,
-    dayAxisTop: 324,   // secondary day-name strip below hours
-    height:     340,   // was 324
+    tempBot:    160,   // main zone  — 160 px (50% of 320 px data area)
+    windTop:    164,   // wind zone  —  80 px (25%), 4 px gap above
+    windBot:    244,
+    precipTop:  248,   // precip zone — 80 px (25%), 4 px gap above
+    precipBot:  328,
+    timeTop:    332,   // hour labels
+    dayAxisTop: 348,   // day name strip
+    height:     364,
   };
 
   const PAD = { left: 6, right: 6 };
@@ -163,11 +163,11 @@
 
       this._drawBackground();
       this._drawCloudCover();
-      this.drawWindIndicators(ctx, this.hours, this._windLayout());
       this._drawTemperatureArea();
       this._drawTemperatureLine();
       this._drawFeelsLikeLine();
       this._drawPressureLine();
+      this.drawWindIndicators(ctx, this.hours, this._windLayout());
       this._drawPrecipBars();
       this._drawDayDividers();
       this._drawNowMarker();
@@ -202,6 +202,15 @@
         ctx.moveTo(0, y); ctx.lineTo(W, y);
         ctx.stroke();
       }
+
+      // Swimlane separator lines between main / wind / precip zones
+      ctx.strokeStyle = C.dayDiv;
+      ctx.lineWidth   = 1;
+      [ZONE.windTop, ZONE.precipTop].forEach(y => {
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(W, y);
+        ctx.stroke();
+      });
     }
 
     // ── 2. Cloud cover ────────────────────────────────────────────────────
@@ -380,10 +389,10 @@
 
       const INTERVAL = 3;   // draw an arrow every 3rd hour
       const MAX_SPD  = 90;  // km/h ceiling — 30 km/h lands at exactly 1/3 height
-      const zoneH    = ZONE.tempBot - ZONE.tempTop;
+      const zoneH    = ZONE.windBot - ZONE.windTop;
 
-      // Map speed → Y inside the main temp zone (0 km/h = tempBot, MAX_SPD = tempTop)
-      const windY = spd => ZONE.tempBot - (clamp(spd || 0, 0, MAX_SPD) / MAX_SPD) * zoneH;
+      // Map speed → Y inside the wind zone (0 km/h = windBot, MAX_SPD = windTop)
+      const windY = spd => ZONE.windBot - (clamp(spd || 0, 0, MAX_SPD) / MAX_SPD) * zoneH;
 
       // Build point array for the speed curve
       const pts = hours.map((h, i) => ({
@@ -392,13 +401,13 @@
       }));
 
       // ── Pass 1: fill area under speed curve ─────────────────────────────
-      const fillGrad = ctx.createLinearGradient(0, ZONE.tempTop, 0, ZONE.tempBot);
+      const fillGrad = ctx.createLinearGradient(0, ZONE.windTop, 0, ZONE.windBot);
       fillGrad.addColorStop(0, "rgba(220,60,50,0.22)");
       fillGrad.addColorStop(1, "rgba(220,60,50,0.03)");
       ctx.beginPath();
       smoothPath(ctx, pts);
-      ctx.lineTo(pts[pts.length - 1].x, ZONE.tempBot);
-      ctx.lineTo(pts[0].x, ZONE.tempBot);
+      ctx.lineTo(pts[pts.length - 1].x, ZONE.windBot);
+      ctx.lineTo(pts[0].x, ZONE.windBot);
       ctx.closePath();
       ctx.fillStyle = fillGrad;
       ctx.fill();
