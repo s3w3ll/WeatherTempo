@@ -64,13 +64,11 @@
   function lerp(a, b, t)    { return a + (b - a) * t; }
 
   function precipColor(intensity) {
-    // intensity 0-1 maps green→amber→red
-    if (intensity < 0.5) {
-      const t = intensity * 2;
-      return `rgb(${Math.round(lerp(48,240,t))},${Math.round(lerp(214,176,t))},${Math.round(lerp(122,48,t))})`;
-    }
-    const t = (intensity - 0.5) * 2;
-    return `rgb(${Math.round(lerp(240,255,t))},${Math.round(lerp(176,80,t))},${Math.round(lerp(48,85,t))})`;
+    // intensity 0-1 maps sky-blue → deep-blue
+    const r = Math.round(lerp(80,  40, intensity));
+    const g = Math.round(lerp(170, 100, intensity));
+    const b = Math.round(lerp(255, 220, intensity));
+    return `rgb(${r},${g},${b})`;
   }
 
   /**
@@ -317,8 +315,8 @@
 
       // ── Pass 1: precipChance area fill ─────────────────────────────────
       const areaGrad = ctx.createLinearGradient(0, ZONE.precipTop, 0, ZONE.precipBot);
-      areaGrad.addColorStop(0,   "rgba(255,195,50,0.22)");
-      areaGrad.addColorStop(1,   "rgba(255,195,50,0.02)");
+      areaGrad.addColorStop(0,   "rgba(60,150,255,0.22)");
+      areaGrad.addColorStop(1,   "rgba(60,150,255,0.02)");
       ctx.beginPath();
       smoothPath(ctx, pts);
       ctx.lineTo(pts[pts.length - 1].x, ZONE.precipBot);   // down to bottom-right
@@ -345,9 +343,9 @@
       // ── Pass 3: precipChance line (drawn last — always visible above bars) ─
       ctx.beginPath();
       smoothPath(ctx, pts);
-      ctx.strokeStyle = "rgba(255,195,50,0.85)";
+      ctx.strokeStyle = "rgba(60,150,255,0.85)";
       ctx.lineWidth   = 1.5;
-      ctx.shadowColor = "rgba(255,195,50,0.4)";
+      ctx.shadowColor = "rgba(60,150,255,0.4)";
       ctx.shadowBlur  = 3;
       ctx.stroke();
       ctx.shadowBlur  = 0;

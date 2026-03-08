@@ -68,6 +68,41 @@
     return `${idx} Extreme`;
   }
 
+  // ── UV info (today's peak + UV≥4 window) ─────────────────────────────────
+  /**
+   * Returns:
+   *   peakUV   — highest UV index in today's remaining forecast hours
+   *   uvWindow — "10am–3pm" string covering all contiguous UV≥4 hours today,
+   *              or null when UV stays below 4 all day
+   */
+  function uvInfo(hourly) {
+    const nowDate = new Date().toLocaleDateString("en-NZ", {
+      timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    });
+    const todayHours = hourly.filter(h => {
+      if (!h.validTimeUtc) return false;
+      return new Date(h.validTimeUtc * 1000)
+        .toLocaleDateString("en-NZ", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }) === nowDate;
+    });
+
+    const peakUV = todayHours.length
+      ? Math.max(...todayHours.map(h => h.uvIndex ?? 0))
+      : null;
+
+    // Build the UV≥4 window: first start → last slot end (start + 1 hour)
+    const highHours = todayHours.filter(h => (h.uvIndex ?? 0) >= 4);
+    let uvWindow = null;
+    if (highHours.length) {
+      const fmt = utcSec => new Date(utcSec * 1000)
+        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: true });
+      const startTs = highHours[0].validTimeUtc;
+      const endTs   = highHours[highHours.length - 1].validTimeUtc + 3600; // +1 hour
+      uvWindow = `${fmt(startTs)}–${fmt(endTs)}`;
+    }
+
+    return { peakUV, uvWindow };
+  }
+
   // ── Today high/low ────────────────────────────────────────────────────────
   // Uses calendarDayTemperatureMax/Min from daily[0] for midnight-to-midnight
   // accuracy (these values never go null, unlike temperatureMax which goes null
@@ -142,7 +177,13 @@
     el("wind").textContent      = c.windSpeed != null ? `${c.windSpeed} km/h` : "—";
     el("wind-dir").textContent  = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
     el("pressure").textContent  = c.pressure   != null ? `${Math.round(c.pressure)} hPa` : "—";
-    el("uv-index").textContent  = uvLabel(c.uvIndex);
+
+    // UV — current reading + today's peak in brackets + UV≥4 window as sub-label
+    const { peakUV, uvWindow } = uvInfo(data.hourly || []);
+    const uvBase = uvLabel(c.uvIndex);
+    const uvPeak = (peakUV != null && peakUV > (c.uvIndex ?? -1)) ? ` (${uvLabel(peakUV)})` : "";
+    el("uv-index").textContent = c.uvIndex != null ? `${uvBase}${uvPeak}` : "—";
+    el("uv-label").textContent = uvWindow ? `UV · ${uvWindow}` : "UV";
 
     // Astronomy
     el("sunrise").textContent    = fmtShortTime(c.sunriseUtc);
@@ -185,8 +226,9 @@
   /**
    * Push live values to the DOM — only the 7 elements that the Worker covers.
    * Does NOT touch: current-condition, today-high/low, sunrise, sunset, moon-*.
+   * hourly — the forecast array (unchanged between ticks, used for UV peak/window).
    */
-  function updateLiveFields(c, fetchedAt) {
+  function updateLiveFields(c, fetchedAt, hourly) {
     const el = id => document.getElementById(id);
     el("current-temp").textContent  = c.temp      != null ? `${Math.round(c.temp)}°`                  : "—°";
     el("current-feels").textContent = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°`  : "";
@@ -194,7 +236,11 @@
     el("wind").textContent          = c.windSpeed != null ? `${c.windSpeed} km/h`                     : "—";
     el("wind-dir").textContent      = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
     el("pressure").textContent      = c.pressure  != null ? `${Math.round(c.pressure)} hPa`           : "—";
-    el("uv-index").textContent      = uvLabel(c.uvIndex);
+    const { peakUV: livePeak, uvWindow: liveWin } = uvInfo(hourly || []);
+    const liveBase  = uvLabel(c.uvIndex);
+    const livePkStr = (livePeak != null && livePeak > (c.uvIndex ?? -1)) ? ` (${uvLabel(livePeak)})` : "";
+    el("uv-index").textContent = c.uvIndex != null ? `${liveBase}${livePkStr}` : "—";
+    el("uv-label").textContent = liveWin ? `UV · ${liveWin}` : "UV";
     if (c.condition) el("current-condition").textContent = c.condition;
 
     // Replace "28 min ago" with "Live · 11:14 am" after first successful tick.
@@ -224,7 +270,7 @@
         data.current = buildCurrentFromPws(payload, data.current);
         // Prefer obsTimeUtc (when station recorded) over fetchedAt (when Worker ran)
         const displayTs = payload.obsTimeUtc ?? payload.fetchedAt;
-        updateLiveFields(data.current, displayTs);
+        updateLiveFields(data.current, displayTs, data.hourly);
       } catch (err) {
         console.warn("[WeatherTempo] Live refresh failed:", err.message);
         // Silent fail — card keeps showing last known values

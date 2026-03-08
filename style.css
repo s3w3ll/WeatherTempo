@@ -10,6 +10,7 @@
   --accent-cyan:  #3ee5ff;
   --accent-red:   #ff5060;
   --accent-green: #35d97a;
+  --accent-blue:  #3c96ff;
   --radius:       16px;
   --font:         -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 }
@@ -448,7 +449,7 @@ body {
 
 .legend-item.temp::before    { background: var(--accent-warm); }
 .legend-item.feels::before   { background: var(--accent-cyan); border-top: 2px dashed var(--accent-cyan); height: 0; }
-.legend-item.precip::before  { background: var(--accent-green); }
+.legend-item.precip::before  { background: var(--accent-blue); }
 .legend-item.pressure::before{ background: rgba(255,255,255,0.4); }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
