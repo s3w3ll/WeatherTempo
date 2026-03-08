@@ -176,6 +176,9 @@
       windCardinal:  payload.windCardinal,
       pressure:      payload.pressure,
       uvIndex:       payload.uvIndex,
+      // Only overwrite condition when Worker returned one — preserves weather.json
+      // value as fallback if Open-Meteo is temporarily unavailable.
+      ...(payload.condition != null && { condition: payload.condition }),
     });
   }
 
@@ -192,6 +195,7 @@
     el("wind-dir").textContent      = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
     el("pressure").textContent      = c.pressure  != null ? `${Math.round(c.pressure)} hPa`           : "—";
     el("uv-index").textContent      = uvLabel(c.uvIndex);
+    if (c.condition) el("current-condition").textContent = c.condition;
 
     // Replace "28 min ago" with "Live · 11:14 am" after first successful tick.
     // obsTimeUtc = when the station recorded; fetchedAt = when Worker ran (fallback).

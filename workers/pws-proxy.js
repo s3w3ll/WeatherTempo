@@ -17,6 +17,23 @@
 const STATION_ID = "ICHRIS810";
 const PWS_URL    = "https://api.weather.com/v2/pws/observations/current";
 
+const LAT        = -43.5321;
+const LON        =  172.6362;
+const OPEN_METEO = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current_weather=true&wind_speed_unit=kmh`;
+
+// WMO weather interpretation codes → human-readable phrase.
+// Kept in sync with WMO_PHRASE in scripts/fetch_weather.py.
+const WMO_PHRASE = {
+  0: "Clear",           1: "Mainly Clear",    2: "Partly Cloudy",  3: "Overcast",
+  45: "Fog",            48: "Icy Fog",
+  51: "Light Drizzle",  53: "Drizzle",        55: "Heavy Drizzle",
+  61: "Light Rain",     63: "Rain",           65: "Heavy Rain",
+  71: "Light Snow",     73: "Snow",           75: "Heavy Snow",    77: "Snow Grains",
+  80: "Showers",        81: "Showers",        82: "Heavy Showers",
+  85: "Snow Showers",   86: "Heavy Snow Showers",
+  95: "Thunderstorm",   96: "Thunderstorm",   99: "Thunderstorm",
+};
+
 function degToCardinal(deg) {
   const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE",
                 "S","SSW","SW","WSW","W","WNW","NW","NNW"];
@@ -44,23 +61,29 @@ export default {
     url.searchParams.set("format",    "json");
     url.searchParams.set("units",     "m");   // metric
 
-    let pwsJson;
-    try {
-      const r = await fetch(url.toString(), {
-        headers: { Accept: "application/json" },
-      });
-      if (!r.ok) {
-        return new Response(
-          JSON.stringify({ error: `PWS upstream ${r.status}` }),
-          { status: 502, headers: { "Content-Type": "application/json", ...cors } }
-        );
-      }
-      pwsJson = await r.json();
-    } catch (err) {
+    // Fire both fetches simultaneously — Open-Meteo failure degrades gracefully,
+    // PWS failure still returns a 502 (it's the mandatory data source).
+    const [pwsRes, omRes] = await Promise.allSettled([
+      fetch(url.toString(), { headers: { Accept: "application/json" } }),
+      fetch(OPEN_METEO),
+    ]);
+
+    // PWS is mandatory
+    if (pwsRes.status === "rejected" || !pwsRes.value.ok) {
+      const msg = pwsRes.reason?.message ?? `PWS upstream ${pwsRes.value?.status}`;
       return new Response(
-        JSON.stringify({ error: err.message }),
+        JSON.stringify({ error: msg }),
         { status: 502, headers: { "Content-Type": "application/json", ...cors } }
       );
+    }
+    const pwsJson = await pwsRes.value.json();
+
+    // Open-Meteo is optional — null condition keeps the weather.json value intact
+    let condition = null;
+    if (omRes.status === "fulfilled" && omRes.value.ok) {
+      const omJson = await omRes.value.json();
+      const code   = omJson.current_weather?.weathercode;
+      condition = WMO_PHRASE[code] ?? null;
     }
 
     // Extract observation — mirrors Python build_current() feelsLike logic:
@@ -84,6 +107,7 @@ export default {
       windCardinal:  degToCardinal(deg),
       pressure:      m.pressure      ?? null,
       uvIndex:       obs.uv          ?? null,
+      condition,                                // WMO phrase from Open-Meteo, or null
       obsTimeUtc:    obs.obsTimeUtc  ?? null,   // when the station recorded this reading
       fetchedAt:     new Date().toISOString(),  // when the Worker ran (for debugging)
     }), {
