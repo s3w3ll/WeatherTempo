@@ -405,7 +405,11 @@
     initChart._abort = ac;
     const sig = ac.signal;
 
-    const chart = new WeatherChart(canvas, hourly, {
+    // Slice to exactly days×24 hours so the canvas is exactly one viewport wide
+    // with no hidden data scrollable off to the right.
+    const sliced = hourly.slice(0, days * 24);
+
+    const chart = new WeatherChart(canvas, sliced, {
       sunriseUtc: currentMeta?.sunriseUtc,
       sunsetUtc:  currentMeta?.sunsetUtc,
       days,
