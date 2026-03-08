@@ -493,7 +493,7 @@
         ctx.lineWidth   = 1;
         ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.moveTo(x, ZONE.tempTop); ctx.lineTo(x, ZONE.windBot);
+        ctx.moveTo(x, ZONE.tempTop); ctx.lineTo(x, ZONE.precipBot);
         ctx.stroke();
       }
       ctx.restore();
