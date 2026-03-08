@@ -20,7 +20,9 @@
   "use strict";
 
   // ── Layout constants ─────────────────────────────────────────────────────
-  const PX_PER_HOUR = 38;   // horizontal scale
+  // PX_PER_HOUR is now computed per-instance in _setup() as this._pph.
+  // The value is derived from the scroll-container viewport width so that
+  // exactly meta.days days fill the visible area without scrolling.
 
   const ZONE = {
     top:         0,
@@ -110,7 +112,12 @@
     // ── Setup ──────────────────────────────────────────────────────────────
     _setup() {
       const { hours } = this;
-      const W = PAD.left + hours.length * PX_PER_HOUR + PAD.right;
+      // Compute px-per-hour from the scroll-container viewport width so that
+      // exactly meta.days days fill the visible area without horizontal scrolling.
+      const days     = (this.meta && this.meta.days) || 2;
+      const viewport = (this.canvas.parentElement && this.canvas.parentElement.clientWidth) || 900;
+      this._pph = Math.max(8, (viewport - PAD.left - PAD.right) / (days * 24));
+      const W = PAD.left + hours.length * this._pph + PAD.right;
       const H = ZONE.height;
 
       this.canvas.style.width  = W + "px";
@@ -147,7 +154,7 @@
     }
 
     // ── Coordinate helpers ────────────────────────────────────────────────
-    hourX(i)   { return PAD.left + i * PX_PER_HOUR + PX_PER_HOUR / 2; }
+    hourX(i)   { return PAD.left + i * this._pph + this._pph / 2; }
     tempY(t)   { return ZONE.tempBot - (t - this._tMin) / (this._tMax - this._tMin) * (ZONE.tempBot - ZONE.tempTop); }
     pressY(p)  { return ZONE.tempBot - (p - this._pMin) / (this._pMax - this._pMin) * (ZONE.tempBot - ZONE.tempTop); }
 
@@ -183,7 +190,7 @@
       for (let i = 0; i < hours.length; i++) {
         if (hours[i].dayOrNight === "D") {
           ctx.fillStyle = C.bgDay;
-          ctx.fillRect(PAD.left + i * PX_PER_HOUR, 0, PX_PER_HOUR, H);
+          ctx.fillRect(PAD.left + i * this._pph, 0, this._pph, H);
         }
       }
 
@@ -211,7 +218,7 @@
         const ry = 14 * cc;
         ctx.fillStyle = `rgba(210,230,255,${cc * 0.22})`;
         ctx.beginPath();
-        ctx.ellipse(x, (ZONE.cloudTop + ZONE.cloudBot) / 2, PX_PER_HOUR * 0.7, ry, 0, 0, Math.PI * 2);
+        ctx.ellipse(x, (ZONE.cloudTop + ZONE.cloudBot) / 2, this._pph * 0.7, ry, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.filter = "none";
@@ -296,7 +303,7 @@
     // Drawing order: area fill → bars → line (probability context behind, facts in front)
     _drawPrecipBars() {
       const { ctx, hours } = this;
-      const barW  = Math.max(2, PX_PER_HOUR * 0.45);
+      const barW  = Math.max(2, this._pph * 0.45);
       const zoneH = ZONE.precipBot - ZONE.precipTop;
 
       // Map precipChance percentage to canvas y within the precip zone
@@ -455,7 +462,7 @@
         const d1  = new Date((h.validTimeUtc  || 0) * 1000).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
         if (d0 === d1) continue;
 
-        const x = this.hourX(i) - PX_PER_HOUR / 2;
+        const x = this.hourX(i) - this._pph / 2;
 
         // Vertical divider (day name is now rendered in _drawTimeAxis at midnight)
         ctx.strokeStyle = C.dayDiv;
@@ -601,8 +608,8 @@
         const startI = boundaries[b];
         const endI   = boundaries[b + 1] - 1;
 
-        const x0   = this.hourX(startI) - PX_PER_HOUR / 2;
-        const x1   = this.hourX(endI)   + PX_PER_HOUR / 2;
+        const x0   = this.hourX(startI) - this._pph / 2;
+        const x1   = this.hourX(endI)   + this._pph / 2;
         const cx   = (x0 + x1) / 2;
         const pixW = x1 - x0;
 
@@ -618,7 +625,7 @@
 
         // Vertical divider between days
         if (b > 0) {
-          const divX = this.hourX(boundaries[b]) - PX_PER_HOUR / 2;
+          const divX = this.hourX(boundaries[b]) - this._pph / 2;
           ctx.strokeStyle = C.dayDiv;
           ctx.lineWidth   = 1;
           ctx.beginPath();
@@ -638,7 +645,7 @@
      * main canvas) and a floating <div> for the data tooltip.
      * @param {HTMLElement} scrollContainer
      */
-    initHover(scrollContainer) {
+    initHover(scrollContainer, signal) {
       const section = scrollContainer.parentElement; // .chart-section
       const hours   = this.hours;
       const self    = this;
@@ -664,7 +671,7 @@
       function showHover(e) {
         const rect   = scrollContainer.getBoundingClientRect();
         const mouseX = e.clientX - rect.left + scrollContainer.scrollLeft;
-        const rawIdx = Math.round((mouseX - PAD.left - PX_PER_HOUR / 2) / PX_PER_HOUR);
+        const rawIdx = Math.round((mouseX - PAD.left - self._pph / 2) / self._pph);
         const i      = Math.max(0, Math.min(hours.length - 1, rawIdx));
         const h      = hours[i];
 
@@ -717,8 +724,8 @@
         tip.style.display = "none";
       }
 
-      scrollContainer.addEventListener("mousemove",  showHover);
-      scrollContainer.addEventListener("mouseleave", hideHover);
+      scrollContainer.addEventListener("mousemove",  showHover,  { signal });
+      scrollContainer.addEventListener("mouseleave", hideHover, { signal });
     }
 
     /** @private HTML content for the hover tooltip. */

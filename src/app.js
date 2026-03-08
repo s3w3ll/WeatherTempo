@@ -388,29 +388,42 @@
   }
 
   // ── Chart ─────────────────────────────────────────────────────────────────
-  function initChart(hourly, currentMeta) {
+  function initChart(hourly, currentMeta, days = 2) {
     const canvas = document.getElementById("weather-chart");
     const scroll = document.getElementById("chart-scroll");
     if (!canvas || !hourly.length) return;
 
+    // ── Cleanup previous render ─────────────────────────────────────────────
+    // Aborting the shared controller removes ALL drag + hover listeners added
+    // by the last call in a single shot — no listener accumulation on zoom change.
+    if (initChart._abort) initChart._abort.abort();
+    scroll.querySelectorAll("canvas:not(#weather-chart)").forEach(c => c.remove());
+    const oldTip = document.getElementById("chart-tooltip");
+    if (oldTip) oldTip.remove();
+
+    const ac  = new AbortController();
+    initChart._abort = ac;
+    const sig = ac.signal;
+
     const chart = new WeatherChart(canvas, hourly, {
       sunriseUtc: currentMeta?.sunriseUtc,
       sunsetUtc:  currentMeta?.sunsetUtc,
+      days,
     });
     chart.render();
     chart.scrollToNow(scroll);
-    chart.initHover(scroll);
+    chart.initHover(scroll, sig);
 
-    // Enable drag-to-scroll
+    // Enable drag-to-scroll — AbortController ensures cleanup on re-init
     let isDown = false, startX = 0, startLeft = 0;
     scroll.addEventListener("mousedown", e => {
       isDown = true; startX = e.pageX; startLeft = scroll.scrollLeft;
-    });
-    window.addEventListener("mouseup",   () => { isDown = false; });
+    }, { signal: sig });
+    window.addEventListener("mouseup",   () => { isDown = false; }, { signal: sig });
     window.addEventListener("mousemove", e => {
       if (!isDown) return;
       scroll.scrollLeft = startLeft - (e.pageX - startX);
-    });
+    }, { signal: sig });
   }
 
   // ── Sample / fallback data ────────────────────────────────────────────────
@@ -497,7 +510,18 @@
     }
 
     populateCard(data);
-    initChart(data.hourly, data.current);
+
+    // Read initial zoom value from the dropdown (default 2 from HTML selected attr)
+    const zoomSel = document.getElementById("chart-zoom");
+    initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+
+    // Re-render chart when zoom level changes
+    if (zoomSel) {
+      zoomSel.addEventListener("change", () => {
+        initChart(data.hourly, data.current, +zoomSel.value);
+      });
+    }
+
     startLiveRefresh(data);
   }
 
