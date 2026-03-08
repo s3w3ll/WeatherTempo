@@ -193,7 +193,8 @@
     el("pressure").textContent      = c.pressure  != null ? `${Math.round(c.pressure)} hPa`           : "—";
     el("uv-index").textContent      = uvLabel(c.uvIndex);
 
-    // Replace "28 min ago" with "Live · 11:14 am" after first successful tick
+    // Replace "28 min ago" with "Live · 11:14 am" after first successful tick.
+    // obsTimeUtc = when the station recorded; fetchedAt = when Worker ran (fallback).
     if (fetchedAt) {
       const t = new Date(fetchedAt).toLocaleTimeString("en-NZ", {
         timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true,
@@ -217,7 +218,9 @@
         const payload = await resp.json();
         if (payload.error) throw new Error(payload.error);
         data.current = buildCurrentFromPws(payload, data.current);
-        updateLiveFields(data.current, payload.fetchedAt);
+        // Prefer obsTimeUtc (when station recorded) over fetchedAt (when Worker ran)
+        const displayTs = payload.obsTimeUtc ?? payload.fetchedAt;
+        updateLiveFields(data.current, displayTs);
       } catch (err) {
         console.warn("[WeatherTempo] Live refresh failed:", err.message);
         // Silent fail — card keeps showing last known values

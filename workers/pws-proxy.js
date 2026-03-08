@@ -84,7 +84,8 @@ export default {
       windCardinal:  degToCardinal(deg),
       pressure:      m.pressure      ?? null,
       uvIndex:       obs.uv          ?? null,
-      fetchedAt:     new Date().toISOString(),
+      obsTimeUtc:    obs.obsTimeUtc  ?? null,   // when the station recorded this reading
+      fetchedAt:     new Date().toISOString(),  // when the Worker ran (for debugging)
     }), {
       status: 200,
       headers: {
