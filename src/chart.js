@@ -378,55 +378,78 @@
     drawWindIndicators(ctx, hours, layout) {
       ctx.save();
 
-      // Dashed baseline
-      ctx.strokeStyle = "rgba(255,100,110,0.35)";
-      ctx.lineWidth   = 1;
-      ctx.setLineDash([4, 6]);
+      const INTERVAL = 3;          // draw an arrow every 3rd hour
+      const MAX_SPD  = 80;         // km/h ceiling for Y-axis
+      const zoneH    = ZONE.windBot - ZONE.windTop;
+
+      // Map speed → canvas Y (0 km/h = windBot, MAX_SPD = windTop)
+      const windY = spd => ZONE.windBot - (clamp(spd || 0, 0, MAX_SPD) / MAX_SPD) * zoneH;
+
+      // Build point array for the speed curve
+      const pts = hours.map((h, i) => ({
+        x: layout.x(i),
+        y: windY(h.windSpeed || 0),
+      }));
+
+      // ── Pass 1: fill area under speed curve ─────────────────────────────
+      const fillGrad = ctx.createLinearGradient(0, ZONE.windTop, 0, ZONE.windBot);
+      fillGrad.addColorStop(0, "rgba(255,100,110,0.18)");
+      fillGrad.addColorStop(1, "rgba(60,210,255,0.04)");
       ctx.beginPath();
-      ctx.moveTo(0, layout.midY);
-      ctx.lineTo(this.W, layout.midY);
+      smoothPath(ctx, pts);
+      ctx.lineTo(pts[pts.length - 1].x, ZONE.windBot);
+      ctx.lineTo(pts[0].x, ZONE.windBot);
+      ctx.closePath();
+      ctx.fillStyle = fillGrad;
+      ctx.fill();
+
+      // ── Pass 2: speed line ───────────────────────────────────────────────
+      ctx.beginPath();
+      smoothPath(ctx, pts);
+      ctx.strokeStyle = "rgba(160,210,255,0.70)";
+      ctx.lineWidth   = 1.5;
+      ctx.shadowColor = "rgba(160,210,255,0.35)";
+      ctx.shadowBlur  = 3;
       ctx.stroke();
-      ctx.setLineDash([]);
+      ctx.shadowBlur  = 0;
 
-      const INTERVAL = 3; // draw every 3rd hour
-      const MAX_SPD  = 80; // km/h ceiling for scaling
-
+      // ── Pass 3: direction arrows centred on the speed line ───────────────
+      const L = 5; // fixed arrow half-length in px
       for (let i = 0; i < hours.length; i += INTERVAL) {
         const h = hours[i];
         if (h.windSpeed == null) continue;
 
-        const x     = layout.x(i);
-        const spd   = clamp(h.windSpeed, 0, MAX_SPD);
-        const t     = spd / MAX_SPD;            // 0-1
-        const scale = lerp(5, 13, t);           // arrow half-length in px
-
-        // windDirection = direction wind comes FROM → point arrow toward destination
-        const angleDeg = (h.windDirection || 0) + 180;
-        const rad      = angleDeg * Math.PI / 180;
-
-        const dx = Math.sin(rad) * scale;
-        const dy = -Math.cos(rad) * scale;
+        const x   = layout.x(i);
+        const y   = windY(h.windSpeed);
+        const spd = clamp(h.windSpeed, 0, MAX_SPD);
+        const t   = spd / MAX_SPD;
 
         // Arrow colour: calm=cyan, strong=red
         const r = Math.round(lerp(60, 255, t));
-        const g = Math.round(lerp(210, 90, t));
+        const g = Math.round(lerp(210, 90,  t));
         const b = Math.round(lerp(255, 100, t));
         ctx.strokeStyle = `rgb(${r},${g},${b})`;
         ctx.fillStyle   = `rgb(${r},${g},${b})`;
         ctx.lineWidth   = 1.5;
 
-        // Shaft
+        // windDirection = direction wind comes FROM → point arrow toward destination
+        const angleDeg = (h.windDirection || 0) + 180;
+        const rad      = angleDeg * Math.PI / 180;
+        const dx = Math.sin(rad) * L;
+        const dy = -Math.cos(rad) * L;
+
+        // Shaft: tail → tip, centred at (x, y)
         ctx.beginPath();
-        ctx.moveTo(x - dx * 0.6, layout.midY - dy * 0.6);
-        ctx.lineTo(x + dx * 0.6, layout.midY + dy * 0.6);
+        ctx.moveTo(x - dx * 0.6, y - dy * 0.6);
+        ctx.lineTo(x + dx * 0.6, y + dy * 0.6);
         ctx.stroke();
 
-        // Arrowhead (filled triangle at tip)
+        // Filled arrowhead at tip
         const tipX = x + dx * 0.6;
-        const tipY = layout.midY + dy * 0.6;
-        const hw   = clamp(scale * 0.45, 2.5, 6);
-        const px   = -dy / scale * hw;
-        const py   =  dx / scale * hw;
+        const tipY = y  + dy * 0.6;
+        const hw   = clamp(L * 0.45, 2.5, 4);
+        const px   = -dy / L * hw;
+        const py   =  dx / L * hw;
         ctx.beginPath();
         ctx.moveTo(tipX + dx * 0.5, tipY + dy * 0.5);
         ctx.lineTo(tipX - dx * 0.3 + px, tipY - dy * 0.3 + py);
