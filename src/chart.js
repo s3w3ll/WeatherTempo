@@ -288,32 +288,62 @@
       ctx.restore();
     }
 
-    // ── 7. Precipitation bars ──────────────────────────────────────────────
+    // ── 7. Precipitation: qpf bars + precipChance line/area ───────────────
+    // Two separate visual channels:
+    //   • precipChance (probability) → amber Catmull-Rom line + semi-transparent area
+    //     y-axis: 0% = precipBot, 100% = precipTop (spans the full zone height)
+    //   • qpf (actual amount)        → solid bars, height proportional to _qMax
+    // Drawing order: area fill → bars → line (probability context behind, facts in front)
     _drawPrecipBars() {
       const { ctx, hours } = this;
       const barW  = Math.max(2, PX_PER_HOUR * 0.45);
       const zoneH = ZONE.precipBot - ZONE.precipTop;
 
+      // Map precipChance percentage to canvas y within the precip zone
+      const probY = pct => ZONE.precipBot - (pct / 100) * zoneH;
+
+      // Build point array once — reused for both area fill and line stroke
+      const pts = hours.map((h, i) => ({
+        x: this.hourX(i),
+        y: probY(h.precipChance || 0),
+      }));
+
+      // ── Pass 1: precipChance area fill ─────────────────────────────────
+      const areaGrad = ctx.createLinearGradient(0, ZONE.precipTop, 0, ZONE.precipBot);
+      areaGrad.addColorStop(0,   "rgba(255,195,50,0.22)");
+      areaGrad.addColorStop(1,   "rgba(255,195,50,0.02)");
+      ctx.beginPath();
+      smoothPath(ctx, pts);
+      ctx.lineTo(pts[pts.length - 1].x, ZONE.precipBot);   // down to bottom-right
+      ctx.lineTo(pts[0].x,              ZONE.precipBot);   // across to bottom-left
+      ctx.closePath();
+      ctx.fillStyle = areaGrad;
+      ctx.fill();
+
+      // ── Pass 2: qpf bars (actual rain only — skips probability-only hours) ─
       for (let i = 0; i < hours.length; i++) {
-        const h    = hours[i];
-        const prob = (h.precipChance || 0) / 100;
-        const qpf  = h.qpf || 0;
-
-        // Show a bar if there's any non-negligible probability
-        if (prob < 0.05 && qpf === 0) continue;
-
+        const qpf = hours[i].qpf || 0;
+        if (qpf <= 0) continue;
         const intensity = clamp(qpf / this._qMax, 0, 1);
-        const height    = Math.max(3, zoneH * clamp(prob * 0.6 + intensity * 0.4, 0.05, 1));
+        const height    = Math.max(2, zoneH * intensity);
         const x         = this.hourX(i) - barW / 2;
-        const y         = ZONE.precipBot - height;
-
-        ctx.fillStyle = precipColor(intensity);
-        ctx.globalAlpha = 0.85;
+        ctx.fillStyle   = precipColor(intensity);
+        ctx.globalAlpha = 0.90;
         ctx.beginPath();
-        ctx.roundRect(x, y, barW, height, [2, 2, 0, 0]);
+        ctx.roundRect(x, ZONE.precipBot - height, barW, height, [2, 2, 0, 0]);
         ctx.fill();
         ctx.globalAlpha = 1;
       }
+
+      // ── Pass 3: precipChance line (drawn last — always visible above bars) ─
+      ctx.beginPath();
+      smoothPath(ctx, pts);
+      ctx.strokeStyle = "rgba(255,195,50,0.85)";
+      ctx.lineWidth   = 1.5;
+      ctx.shadowColor = "rgba(255,195,50,0.4)";
+      ctx.shadowBlur  = 3;
+      ctx.stroke();
+      ctx.shadowBlur  = 0;
     }
 
     // ── 8. Wind indicators ─────────────────────────────────────────────────
@@ -708,7 +738,7 @@
         row("Wind",          wind),
         row("Gusts",         h.windGust != null ? `${h.windGust} km/h` : "—"),
         row("Rain chance",   fmt(h.precipChance,          "%")),
-        row("Precipitation", h.qpf != null ? `${h.qpf} mm` : "—"),
+        row("Precipitation", h.qpf > 0    ? `${h.qpf} mm` : "—"),
         row("Pressure",      h.pressureMeanSeaLevel != null
           ? `${Math.round(h.pressureMeanSeaLevel)} hPa` : "—"),
         row("UV index",      h.uvIndex != null ? String(h.uvIndex) : "—"),
