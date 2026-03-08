@@ -449,6 +449,7 @@ body {
 
 .legend-item.temp::before    { background: var(--accent-warm); }
 .legend-item.feels::before   { background: var(--accent-cyan); border-top: 2px dashed var(--accent-cyan); height: 0; }
+.legend-item.wind::before    { background: var(--accent-red); }
 .legend-item.precip::before  { background: var(--accent-blue); }
 .legend-item.pressure::before{ background: rgba(255,255,255,0.4); }
 

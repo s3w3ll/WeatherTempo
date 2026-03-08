@@ -163,12 +163,12 @@
 
       this._drawBackground();
       this._drawCloudCover();
+      this.drawWindIndicators(ctx, this.hours, this._windLayout());
       this._drawTemperatureArea();
       this._drawTemperatureLine();
       this._drawFeelsLikeLine();
       this._drawPressureLine();
       this._drawPrecipBars();
-      this.drawWindIndicators(ctx, this.hours, this._windLayout());
       this._drawDayDividers();
       this._drawNowMarker();
       this._drawTimeAxis();
@@ -378,12 +378,12 @@
     drawWindIndicators(ctx, hours, layout) {
       ctx.save();
 
-      const INTERVAL = 3;          // draw an arrow every 3rd hour
-      const MAX_SPD  = 80;         // km/h ceiling for Y-axis
-      const zoneH    = ZONE.windBot - ZONE.windTop;
+      const INTERVAL = 3;   // draw an arrow every 3rd hour
+      const MAX_SPD  = 90;  // km/h ceiling — 30 km/h lands at exactly 1/3 height
+      const zoneH    = ZONE.tempBot - ZONE.tempTop;
 
-      // Map speed → canvas Y (0 km/h = windBot, MAX_SPD = windTop)
-      const windY = spd => ZONE.windBot - (clamp(spd || 0, 0, MAX_SPD) / MAX_SPD) * zoneH;
+      // Map speed → Y inside the main temp zone (0 km/h = tempBot, MAX_SPD = tempTop)
+      const windY = spd => ZONE.tempBot - (clamp(spd || 0, 0, MAX_SPD) / MAX_SPD) * zoneH;
 
       // Build point array for the speed curve
       const pts = hours.map((h, i) => ({
@@ -392,13 +392,13 @@
       }));
 
       // ── Pass 1: fill area under speed curve ─────────────────────────────
-      const fillGrad = ctx.createLinearGradient(0, ZONE.windTop, 0, ZONE.windBot);
-      fillGrad.addColorStop(0, "rgba(255,100,110,0.18)");
-      fillGrad.addColorStop(1, "rgba(60,210,255,0.04)");
+      const fillGrad = ctx.createLinearGradient(0, ZONE.tempTop, 0, ZONE.tempBot);
+      fillGrad.addColorStop(0, "rgba(220,60,50,0.22)");
+      fillGrad.addColorStop(1, "rgba(220,60,50,0.03)");
       ctx.beginPath();
       smoothPath(ctx, pts);
-      ctx.lineTo(pts[pts.length - 1].x, ZONE.windBot);
-      ctx.lineTo(pts[0].x, ZONE.windBot);
+      ctx.lineTo(pts[pts.length - 1].x, ZONE.tempBot);
+      ctx.lineTo(pts[0].x, ZONE.tempBot);
       ctx.closePath();
       ctx.fillStyle = fillGrad;
       ctx.fill();
@@ -406,9 +406,9 @@
       // ── Pass 2: speed line ───────────────────────────────────────────────
       ctx.beginPath();
       smoothPath(ctx, pts);
-      ctx.strokeStyle = "rgba(160,210,255,0.70)";
+      ctx.strokeStyle = "rgba(255,90,70,0.60)";
       ctx.lineWidth   = 1.5;
-      ctx.shadowColor = "rgba(160,210,255,0.35)";
+      ctx.shadowColor = "rgba(255,80,60,0.35)";
       ctx.shadowBlur  = 3;
       ctx.stroke();
       ctx.shadowBlur  = 0;
@@ -419,17 +419,11 @@
         const h = hours[i];
         if (h.windSpeed == null) continue;
 
-        const x   = layout.x(i);
-        const y   = windY(h.windSpeed);
-        const spd = clamp(h.windSpeed, 0, MAX_SPD);
-        const t   = spd / MAX_SPD;
+        const x = layout.x(i);
+        const y = windY(h.windSpeed);
 
-        // Arrow colour: calm=cyan, strong=red
-        const r = Math.round(lerp(60, 255, t));
-        const g = Math.round(lerp(210, 90,  t));
-        const b = Math.round(lerp(255, 100, t));
-        ctx.strokeStyle = `rgb(${r},${g},${b})`;
-        ctx.fillStyle   = `rgb(${r},${g},${b})`;
+        ctx.strokeStyle = "rgba(255,90,70,0.85)";
+        ctx.fillStyle   = "rgba(255,90,70,0.85)";
         ctx.lineWidth   = 1.5;
 
         // windDirection = direction wind comes FROM → point arrow toward destination
