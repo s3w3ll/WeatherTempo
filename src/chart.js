@@ -29,10 +29,10 @@
     cloudTop:    8,
     cloudBot:    50,
     tempTop:     45,
-    tempBot:    160,   // main zone  — 160 px (50% of 320 px data area)
-    windTop:    164,   // wind zone  —  80 px (25%), 4 px gap above
-    windBot:    244,
-    precipTop:  248,   // precip zone — 80 px (25%), 4 px gap above
+    tempBot:    224,   // main zone  — 224 px (70% of 320 px data area)
+    windTop:    228,   // wind zone  —  48 px (15%), 4 px gap above
+    windBot:    276,
+    precipTop:  280,   // precip zone — 48 px (15%), 4 px gap above
     precipBot:  328,
     timeTop:    332,   // hour labels
     dayAxisTop: 348,   // day name strip
@@ -204,8 +204,8 @@
       }
 
       // Swimlane separator lines between main / wind / precip zones
-      ctx.strokeStyle = C.dayDiv;
-      ctx.lineWidth   = 1;
+      ctx.strokeStyle = "rgba(255,255,255,0.28)";
+      ctx.lineWidth   = 2;
       [ZONE.windTop, ZONE.precipTop].forEach(y => {
         ctx.beginPath();
         ctx.moveTo(0, y); ctx.lineTo(W, y);
