@@ -178,12 +178,12 @@
     el("wind-dir").textContent  = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
     el("pressure").textContent  = c.pressure   != null ? `${Math.round(c.pressure)} hPa` : "—";
 
-    // UV — current reading + today's peak in brackets + UV≥4 window as sub-label
+    // UV — current reading + today's peak in brackets + UV≥3 window as sub-label
     const { peakUV, uvWindow } = uvInfo(data.hourly || []);
     const uvBase = uvLabel(c.uvIndex);
     const uvPeak = (peakUV != null && peakUV > (c.uvIndex ?? -1)) ? ` (${uvLabel(peakUV)})` : "";
     el("uv-index").textContent = c.uvIndex != null ? `${uvBase}${uvPeak}` : "—";
-    el("uv-label").textContent = uvWindow ? `UV > 3 · ${uvWindow}` : "UV > 3";
+    el("uv-label").textContent = uvWindow ? `UV >3 · ${uvWindow}` : "UV >3";
 
     // Astronomy
     el("sunrise").textContent    = fmtShortTime(c.sunriseUtc);
