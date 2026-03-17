@@ -240,7 +240,7 @@
     const liveBase  = uvLabel(c.uvIndex);
     const livePkStr = (livePeak != null && livePeak > (c.uvIndex ?? -1)) ? ` (${uvLabel(livePeak)})` : "";
     el("uv-index").textContent = c.uvIndex != null ? `${liveBase}${livePkStr}` : "—";
-    el("uv-label").textContent = liveWin ? `UV · ${liveWin}` : "UV";
+    el("uv-label").textContent = liveWin ? `UV >3 · ${liveWin}` : "UV >3";
     if (c.condition) el("current-condition").textContent = c.condition;
 
     // Replace "28 min ago" with "Live · 11:14 am" after first successful tick.
