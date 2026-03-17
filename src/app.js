@@ -183,7 +183,7 @@
     const uvBase = uvLabel(c.uvIndex);
     const uvPeak = (peakUV != null && peakUV > (c.uvIndex ?? -1)) ? ` (${uvLabel(peakUV)})` : "";
     el("uv-index").textContent = c.uvIndex != null ? `${uvBase}${uvPeak}` : "—";
-    el("uv-label").textContent = uvWindow ? `UV over 3 · ${uvWindow}` : "UV";
+    el("uv-label").textContent = uvWindow ? `UV > 3 · ${uvWindow}` : "UV > 3";
 
     // Astronomy
     el("sunrise").textContent    = fmtShortTime(c.sunriseUtc);
