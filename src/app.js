@@ -90,7 +90,7 @@
       : null;
 
     // Build the UV≥4 window: first start → last slot end (start + 1 hour)
-    const highHours = todayHours.filter(h => (h.uvIndex ?? 0) >= 4);
+    const highHours = todayHours.filter(h => (h.uvIndex ?? 0) >= 3);
     let uvWindow = null;
     if (highHours.length) {
       const fmt = utcSec => new Date(utcSec * 1000)
@@ -183,7 +183,7 @@
     const uvBase = uvLabel(c.uvIndex);
     const uvPeak = (peakUV != null && peakUV > (c.uvIndex ?? -1)) ? ` (${uvLabel(peakUV)})` : "";
     el("uv-index").textContent = c.uvIndex != null ? `${uvBase}${uvPeak}` : "—";
-    el("uv-label").textContent = uvWindow ? `UV · ${uvWindow}` : "UV";
+    el("uv-label").textContent = uvWindow ? `UV over 3 · ${uvWindow}` : "UV";
 
     // Astronomy
     el("sunrise").textContent    = fmtShortTime(c.sunriseUtc);
