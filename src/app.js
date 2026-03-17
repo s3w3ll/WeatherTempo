@@ -94,7 +94,8 @@
     let uvWindow = null;
     if (highHours.length) {
       const fmt = utcSec => new Date(utcSec * 1000)
-        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: true });
+        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: true })
+        .replace(/ (am|pm)$/i, '$1');
       const startTs = highHours[0].validTimeUtc;
       const endTs   = highHours[highHours.length - 1].validTimeUtc + 3600; // +1 hour
       uvWindow = `${fmt(startTs)}–${fmt(endTs)}`;
