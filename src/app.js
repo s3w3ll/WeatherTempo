@@ -62,7 +62,7 @@
   function uvLabel(idx) {
     if (idx == null) return "—";
     if (idx <= 2)  return `${idx} Low`;
-    if (idx <= 5)  return `${idx} Mod`;
+    if (idx <= 5)  return `${idx} Med`;
     if (idx <= 7)  return `${idx} High`;
     if (idx <= 10) return `${idx} V.High`;
     return `${idx} Extreme`;
