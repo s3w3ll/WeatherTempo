@@ -147,6 +147,120 @@
     };
   }
 
+  // ── Day forecast data builder ─────────────────────────────────────────
+  /**
+   * Computes extrema and times for a single forecast day.
+   *
+   * @param {number} dayIndex - 1 = tomorrow, 2 = day after (daily[0] = today)
+   * @param {Array}  hourly   - data.hourly[]
+   * @param {Array}  daily    - data.daily[]
+   * @returns {object|null}   - null when daily[dayIndex] is unavailable
+   */
+  function buildDayForecast(dayIndex, hourly, daily) {
+    const d = (daily || [])[dayIndex];
+    if (!d) return null;
+
+    // ── Date key helper (same pattern as todayHighLow / uvInfo) ──────────
+    const dateKey = function(ts) {
+      return new Date(ts * 1000).toLocaleDateString("en-NZ", {
+        timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+      });
+    };
+
+    // Primary: derive date from sunrise; fallback: client clock + offset
+    const refTs = d.sunriseTimeUtc != null
+      ? d.sunriseTimeUtc
+      : Math.round(Date.now() / 1000) + dayIndex * 86400;
+
+    const targetKey = dateKey(refTs);
+    const slots = (hourly || []).filter(h => h.validTimeUtc && dateKey(h.validTimeUtc) === targetKey);
+
+    // ── Label ─────────────────────────────────────────────────────────────
+    const label = dayIndex === 1
+      ? "Tomorrow"
+      : new Date(refTs * 1000).toLocaleDateString("en-NZ", { timeZone: TZ, weekday: "long" });
+
+    // ── Date display ("19 Mar") ───────────────────────────────────────────
+    const date = new Date(refTs * 1000).toLocaleDateString("en-NZ", {
+      timeZone: TZ, day: "numeric", month: "short",
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    const pick = function(arr, fn) {
+      return arr.reduce(function(best, h) { return fn(h) > fn(best) ? h : best; }, arr[0]);
+    };
+
+    // ── Temperature (val from daily, time from hourly max/min slot) ───────
+    const hiSlot = slots.length ? pick(slots, function(h) { return h.temperature; }) : null;
+    const loSlot = slots.length ? slots.reduce(function(a, b) {
+      return a.temperature < b.temperature ? a : b;
+    }) : null;
+
+    // ── Humidity ──────────────────────────────────────────────────────────
+    const humHiSlot = slots.length ? pick(slots, function(h) { return h.relativeHumidity; }) : null;
+    const humLoSlot = slots.length ? slots.reduce(function(a, b) {
+      return a.relativeHumidity < b.relativeHumidity ? a : b;
+    }) : null;
+
+    // ── Wind (highest windSpeed) ───────────────────────────────────────────
+    const windSlot = slots.length ? pick(slots, function(h) { return h.windSpeed; }) : null;
+
+    // ── Precip ────────────────────────────────────────────────────────────
+    const totalMm = slots.length
+      ? +slots.reduce(function(s, h) { return s + (h.qpf || 0); }, 0).toFixed(1)
+      : null;
+    const maxChance = slots.length
+      ? Math.max.apply(null, slots.map(function(h) { return h.precipChance || 0; }))
+      : null;
+
+    // ── UV ────────────────────────────────────────────────────────────────
+    const peakUV = slots.length
+      ? Math.max.apply(null, slots.map(function(h) { return h.uvIndex || 0; }))
+      : null;
+
+    const uvFmt = function(ts) {
+      return new Date(ts * 1000)
+        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: true })
+        .replace(/ (am|pm)$/i, "$1");
+    };
+    const uvSlots = slots.filter(function(h) { return (h.uvIndex || 0) >= 3; });
+    const uvWindow = uvSlots.length
+      ? uvFmt(uvSlots[0].validTimeUtc) + "–" + uvFmt(uvSlots[uvSlots.length - 1].validTimeUtc + 3600)
+      : null;
+
+    // ── Pressure ──────────────────────────────────────────────────────────
+    const presHiSlot = slots.length ? pick(slots, function(h) { return h.pressureMeanSeaLevel; }) : null;
+    const presLoSlot = slots.length ? slots.reduce(function(a, b) {
+      return a.pressureMeanSeaLevel < b.pressureMeanSeaLevel ? a : b;
+    }) : null;
+
+    return {
+      label,
+      date,
+      sunrise: d.sunriseTimeUtc  || null,
+      sunset:  d.sunsetTimeUtc   || null,
+      temp: {
+        max: { val: d.calendarDayTemperatureMax, utcSec: hiSlot ? hiSlot.validTimeUtc : null },
+        min: { val: d.calendarDayTemperatureMin, utcSec: loSlot ? loSlot.validTimeUtc : null },
+      },
+      humidity: {
+        max: { val: humHiSlot ? humHiSlot.relativeHumidity : null, utcSec: humHiSlot ? humHiSlot.validTimeUtc : null },
+        min: { val: humLoSlot ? humLoSlot.relativeHumidity : null, utcSec: humLoSlot ? humLoSlot.validTimeUtc : null },
+      },
+      wind: {
+        speed:   windSlot ? windSlot.windSpeed            : null,
+        cardinal: windSlot ? (windSlot.windDirectionCardinal || degToCard(windSlot.windDirection)) : null,
+        utcSec:  windSlot ? windSlot.validTimeUtc         : null,
+      },
+      precip:   { totalMm, maxChance },
+      uv:       { peak: peakUV, window: uvWindow },
+      pressure: {
+        max: { val: presHiSlot ? presHiSlot.pressureMeanSeaLevel : null, utcSec: presHiSlot ? presHiSlot.validTimeUtc : null },
+        min: { val: presLoSlot ? presLoSlot.pressureMeanSeaLevel : null, utcSec: presLoSlot ? presLoSlot.validTimeUtc : null },
+      },
+    };
+  }
+
   // ── Populate conditions card ──────────────────────────────────────────────
   function populateCard(data) {
     const c = data.current || {};
