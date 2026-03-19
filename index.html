@@ -23,8 +23,11 @@
       </div>
     </header>
 
-    <!-- ── Conditions Card ──────────────────────────────────────────────── -->
-    <section class="card conditions-card">
+    <!-- ── Cards row (conditions + 2-day forecast) ─────────────────────── -->
+    <div class="cards-row">
+
+      <!-- ── Conditions Card ──────────────────────────────────────────────── -->
+      <section class="card conditions-card">
 
       <!-- Row 1: current temp + today high/low -->
       <div class="cond-top">
@@ -136,7 +139,15 @@
         <canvas id="tide-mini-chart" width="280" height="56"></canvas>
       </div>
 
-    </section>
+      </section>
+
+      <!-- ── 2-Day Forecast Cards ─────────────────────────────────────────── -->
+      <div class="day-cards-col">
+        <div class="card day-card" id="day-card-1"></div>
+        <div class="card day-card" id="day-card-2"></div>
+      </div>
+
+    </div><!-- .cards-row -->
 
   </div><!-- .app -->
 
