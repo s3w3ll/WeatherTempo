@@ -187,20 +187,21 @@
 
     // ── Helpers ───────────────────────────────────────────────────────────
     const pick = function(arr, fn) {
+      if (!arr.length) return null;
       return arr.reduce(function(best, h) { return fn(h) > fn(best) ? h : best; }, arr[0]);
+    };
+    const pickMin = function(arr, fn) {
+      if (!arr.length) return null;
+      return arr.reduce(function(best, h) { return fn(h) < fn(best) ? h : best; }, arr[0]);
     };
 
     // ── Temperature (val from daily, time from hourly max/min slot) ───────
     const hiSlot = slots.length ? pick(slots, function(h) { return h.temperature; }) : null;
-    const loSlot = slots.length ? slots.reduce(function(a, b) {
-      return a.temperature < b.temperature ? a : b;
-    }) : null;
+    const loSlot = slots.length ? pickMin(slots, function(h) { return h.temperature; }) : null;
 
     // ── Humidity ──────────────────────────────────────────────────────────
     const humHiSlot = slots.length ? pick(slots, function(h) { return h.relativeHumidity; }) : null;
-    const humLoSlot = slots.length ? slots.reduce(function(a, b) {
-      return a.relativeHumidity < b.relativeHumidity ? a : b;
-    }) : null;
+    const humLoSlot = slots.length ? pickMin(slots, function(h) { return h.relativeHumidity; }) : null;
 
     // ── Wind (highest windSpeed) ───────────────────────────────────────────
     const windSlot = slots.length ? pick(slots, function(h) { return h.windSpeed; }) : null;
@@ -230,9 +231,7 @@
 
     // ── Pressure ──────────────────────────────────────────────────────────
     const presHiSlot = slots.length ? pick(slots, function(h) { return h.pressureMeanSeaLevel; }) : null;
-    const presLoSlot = slots.length ? slots.reduce(function(a, b) {
-      return a.pressureMeanSeaLevel < b.pressureMeanSeaLevel ? a : b;
-    }) : null;
+    const presLoSlot = slots.length ? pickMin(slots, function(h) { return h.pressureMeanSeaLevel; }) : null;
 
     return {
       label,
