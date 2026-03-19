@@ -787,6 +787,8 @@
       calendarDayTemperatureMin: 11 - d * 0.3,
       temperatureMax:            25 - d * 0.5,
       temperatureMin:            11 - d * 0.3,
+      sunriseTimeUtc: nowTs + d * 86400 - 3 * 3600,   // approx 3 h before current time
+      sunsetTimeUtc:  nowTs + d * 86400 + 6 * 3600,   // approx 6 h after current time
     }));
 
     return {
