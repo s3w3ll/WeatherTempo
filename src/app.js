@@ -260,6 +260,154 @@
     };
   }
 
+  // ── Day forecast card renderer ────────────────────────────────────────
+  /**
+   * Populates a .day-card element from a buildDayForecast() result.
+   *
+   * @param {HTMLElement} el  - the .day-card div
+   * @param {object|null} fc  - forecast object or null
+   */
+  function renderDayCard(el, fc) {
+    if (!el) return;
+
+    // Helper: format utcSec as "2pm", "10am", etc., or "—" when null
+    const fmtH = function(utcSec) {
+      if (!utcSec) return "—";
+      return new Date(utcSec * 1000)
+        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: true })
+        .replace(/ (am|pm)$/i, "$1");
+    };
+
+    // Helper: format utcSec as "6:32am" (with minutes), or "—"
+    const fmtHM = function(utcSec) {
+      if (!utcSec) return "—";
+      return new Date(utcSec * 1000)
+        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true })
+        .replace(/ (am|pm)$/i, "$1");
+    };
+
+    // Render "—" for nulls
+    const n = function(v, suffix) {
+      return v != null ? v + (suffix || "") : "—";
+    };
+
+    if (!fc) {
+      el.innerHTML = '<div class="dc-label"><span class="dc-day">—</span></div>';
+      return;
+    }
+
+    const hiTemp  = fc.temp.max.val != null ? Math.round(fc.temp.max.val) + "°" : "—";
+    const loTemp  = fc.temp.min.val != null ? Math.round(fc.temp.min.val) + "°" : "—";
+    const hiTime  = fmtH(fc.temp.max.utcSec);
+    const loTime  = fmtH(fc.temp.min.utcSec);
+
+    const humHi   = n(fc.humidity.max.val, "%");
+    const humHiT  = fmtH(fc.humidity.max.utcSec);
+    const humLo   = n(fc.humidity.min.val, "%");
+    const humLoT  = fmtH(fc.humidity.min.utcSec);
+
+    const windStr = fc.wind.speed != null
+      ? `${fc.wind.speed} km/h ${fc.wind.cardinal || ""} at ${fmtH(fc.wind.utcSec)}`
+      : "—";
+
+    const precipStr = (fc.precip.totalMm != null && fc.precip.maxChance != null)
+      ? `${fc.precip.totalMm} mm · ${fc.precip.maxChance}%`
+      : "—";
+
+    const uvPeak  = fc.uv.peak != null ? uvLabel(fc.uv.peak) : "—";
+    const uvWin   = fc.uv.window || "Below 3";
+
+    const presHi  = fc.pressure.max.val != null ? Math.round(fc.pressure.max.val) + " hPa" : "—";
+    const presHiT = fmtH(fc.pressure.max.utcSec);
+    const presLo  = fc.pressure.min.val != null ? Math.round(fc.pressure.min.val) + " hPa" : "—";
+    const presLoT = fmtH(fc.pressure.min.utcSec);
+
+    el.innerHTML = `
+      <div class="dc-label">
+        <span class="dc-day">${fc.label}</span>
+        <span class="dc-date">${fc.date}</span>
+      </div>
+
+      <div class="dc-temp-row">
+        <div class="dc-temp-half">
+          <svg class="dc-arrow up" viewBox="0 0 16 16"><path d="M8 2l5 7H3z"/></svg>
+          <span class="dc-temp-val hi">${hiTemp}</span>
+          <span class="dc-temp-time">${hiTime}</span>
+        </div>
+        <div class="dc-temp-half">
+          <svg class="dc-arrow down" viewBox="0 0 16 16"><path d="M8 14l5-7H3z"/></svg>
+          <span class="dc-temp-val lo">${loTemp}</span>
+          <span class="dc-temp-time">${loTime}</span>
+        </div>
+      </div>
+
+      <div class="dc-row">
+        <span class="dc-row-icon">💧</span>
+        <span class="dc-row-content">
+          <span class="dc-val-muted">Hi</span>
+          <span style="color:var(--accent-blue);font-weight:600">${humHi}</span>
+          <span class="dc-val-muted">${humHiT}</span>
+          &nbsp;·&nbsp;
+          <span class="dc-val-muted">Lo</span>
+          <span style="color:var(--accent-cyan);font-weight:600">${humLo}</span>
+          <span class="dc-val-muted">${humLoT}</span>
+        </span>
+      </div>
+
+      <hr class="dc-sep">
+
+      <div class="dc-sun-row">
+        <div class="dc-sun-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-warm)" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+          <span class="dc-sun-val">${fmtHM(fc.sunrise)}</span>
+        </div>
+        <div class="dc-sun-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff8c50" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+          <span class="dc-sun-val">${fmtHM(fc.sunset)}</span>
+        </div>
+      </div>
+
+      <hr class="dc-sep">
+
+      <div class="dc-row">
+        <span class="dc-row-icon">💨</span>
+        <span class="dc-row-content dc-val-wind">${windStr}</span>
+      </div>
+
+      <div class="dc-row">
+        <span class="dc-row-icon">🌧</span>
+        <span class="dc-row-content dc-val-precip">${precipStr}</span>
+      </div>
+
+      <div class="dc-row">
+        <span class="dc-row-icon">☀️</span>
+        <span class="dc-row-content">
+          <span class="dc-val-uv">UV ${uvPeak}</span>
+          <span class="dc-val-muted"> · ${uvWin}</span>
+        </span>
+      </div>
+
+      <hr class="dc-sep">
+
+      <div class="dc-pressure-row">
+        <svg class="dc-arrow up" viewBox="0 0 16 16"><path d="M8 2l5 7H3z"/></svg>
+        <span class="dc-val-pressure">${presHi}</span>
+        <span class="dc-val-muted">${presHiT}</span>
+      </div>
+      <div class="dc-pressure-row">
+        <svg class="dc-arrow down" viewBox="0 0 16 16"><path d="M8 14l5-7H3z"/></svg>
+        <span class="dc-val-pressure">${presLo}</span>
+        <span class="dc-val-muted">${presLoT}</span>
+      </div>
+    `;
+  }
+
   // ── Populate conditions card ──────────────────────────────────────────────
   function populateCard(data) {
     const c = data.current || {};
