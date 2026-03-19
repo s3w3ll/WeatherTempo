@@ -455,6 +455,16 @@
 
     // Tides
     populateTides();
+
+    // Day forecast cards
+    renderDayCard(
+      document.getElementById("day-card-1"),
+      buildDayForecast(1, data.hourly || [], data.daily || [])
+    );
+    renderDayCard(
+      document.getElementById("day-card-2"),
+      buildDayForecast(2, data.hourly || [], data.daily || [])
+    );
   }
 
   function degToCard(deg) {
