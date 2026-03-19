@@ -241,6 +241,8 @@ body {
 .dc-val-uv      { color: var(--accent-warm); font-weight: 600; }
 .dc-val-muted   { color: var(--text-muted);  font-size: 0.72rem; }
 .dc-val-pressure{ color: var(--text);        font-weight: 600; font-variant-numeric: tabular-nums; }
+.dc-val-hum-hi  { color: var(--accent-blue);  font-weight: 600; }
+.dc-val-hum-lo  { color: var(--accent-cyan);   font-weight: 600; }
 
 /* Pressure rows */
 .dc-pressure-row {

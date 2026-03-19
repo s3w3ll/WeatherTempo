@@ -216,7 +216,11 @@
 
     // ── UV ────────────────────────────────────────────────────────────────
     const peakUV = slots.length
-      ? Math.max.apply(null, slots.map(function(h) { return h.uvIndex || 0; }))
+      ? (function() {
+          var max = -Infinity;
+          slots.forEach(function(h) { if (h.uvIndex != null && h.uvIndex > max) max = h.uvIndex; });
+          return max === -Infinity ? null : max;
+        })()
       : null;
 
     const uvFmt = function(ts) {
@@ -345,11 +349,11 @@
         <span class="dc-row-icon">💧</span>
         <span class="dc-row-content">
           <span class="dc-val-muted">Hi</span>
-          <span style="color:var(--accent-blue);font-weight:600">${humHi}</span>
+          <span class="dc-val-hum-hi">${humHi}</span>
           <span class="dc-val-muted">${humHiT}</span>
           &nbsp;·&nbsp;
           <span class="dc-val-muted">Lo</span>
-          <span style="color:var(--accent-cyan);font-weight:600">${humLo}</span>
+          <span class="dc-val-hum-lo">${humLo}</span>
           <span class="dc-val-muted">${humLoT}</span>
         </span>
       </div>
