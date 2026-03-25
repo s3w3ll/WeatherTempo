@@ -862,6 +862,20 @@
       });
     }
 
+    // Redraw chart when container width changes (desktop resize, mobile rotation)
+    let resizeTimer;
+    let roFirstRun = true;
+    const chartSection = document.querySelector(".chart-section");
+    if (chartSection && window.ResizeObserver) {
+      new ResizeObserver(() => {
+        if (roFirstRun) { roFirstRun = false; return; }
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+        }, 150);
+      }).observe(chartSection);
+    }
+
     startLiveRefresh(data);
   }
 
