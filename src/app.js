@@ -839,14 +839,26 @@
 
     populateCard(data);
 
-    // Read initial zoom value from the dropdown (default 2 from HTML selected attr)
+    // Read initial zoom value — restore from localStorage if available
     const zoomSel = document.getElementById("chart-zoom");
+    if (zoomSel) {
+      try {
+        const stored = localStorage.getItem("weatherTempo.chartDays");
+        const validValues = Array.from(zoomSel.options).map(o => o.value);
+        if (stored && validValues.includes(stored)) {
+          zoomSel.value = stored;
+        }
+      } catch (_) { /* localStorage unavailable (e.g. Safari private mode) */ }
+    }
     initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
 
-    // Re-render chart when zoom level changes
+    // Re-render chart when zoom level changes; persist selection
     if (zoomSel) {
       zoomSel.addEventListener("change", () => {
         initChart(data.hourly, data.current, +zoomSel.value);
+        try {
+          localStorage.setItem("weatherTempo.chartDays", zoomSel.value);
+        } catch (_) { /* storage unavailable */ }
       });
     }
 
