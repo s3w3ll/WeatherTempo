@@ -530,7 +530,8 @@ body {
 .chart-section {
   position: relative;
   padding-bottom: 48px;   /* breathing room at page bottom */
-  width: 80vw;
+  max-width: 900px;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -644,9 +645,6 @@ body {
 .legend-item.pressure::before{ background: rgba(255,255,255,0.4); }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
-  .chart-section { width: 95vw; }
-}
 
 @media (max-width: 600px) {
   .current-temp { font-size: 3.5rem; }
