@@ -124,10 +124,11 @@
   }
 
   /**
-   * Return sample points for today's tidal curve (local NZ midnight → midnight).
+   * Return sample points for the tidal curve starting at local NZ midnight today.
+   * @param {number} hours  Duration in hours from midnight (default 48).
    * @returns {{ time: Date, height: number }[]}
    */
-  function getTodayCurve() {
+  function getTodayCurve(hours = 48) {
     const tz   = "Pacific/Auckland";
     const now  = new Date();
     const ds   = now.toLocaleDateString("en-NZ", { timeZone: tz,
@@ -138,7 +139,7 @@
     // Adjust for timezone offset
     const offsetMs    = -new Date(startLocal).getTimezoneOffset() * 60_000;
     const startUtc    = startLocal.getTime() - offsetMs;
-    return sampleTide(startUtc, startUtc + 24 * 3_600_000, 10);
+    return sampleTide(startUtc, startUtc + hours * 3_600_000, 10);
   }
 
   // ── Export ─────────────────────────────────────────────────────────────
