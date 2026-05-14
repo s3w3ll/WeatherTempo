@@ -611,6 +611,61 @@
       pts[pts.length - 1].time.getTime()
     );
 
+    // ── Tooltip setup ────────────────────────────────────────────────────────
+    const section = canvas.closest(".tides-section");
+    let tip = document.getElementById("tide-tooltip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.id = "tide-tooltip";
+      section.appendChild(tip);
+    }
+
+    const startMs = pts[0].time.getTime();
+    const spanMs  = pts[pts.length - 1].time.getTime() - startMs;
+
+    canvas.onmousemove = (e) => {
+      const rect  = canvas.getBoundingClientRect();
+      const frac  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const hoverMs = startMs + frac * spanMs;
+      const height  = +Tides.tideHeight(hoverMs).toFixed(2);
+
+      // Find nearest high/low event within ±90 min
+      const nearest = events.reduce((best, ev) => {
+        const d = Math.abs(ev.time.getTime() - hoverMs);
+        return d < (best?.d ?? Infinity) ? { ev, d } : best;
+      }, null);
+      const nearLabel = nearest && nearest.d < 90 * 60_000
+        ? ` · ${nearest.ev.type === "high" ? "High" : "Low"}`
+        : "";
+
+      const timeStr = new Date(hoverMs).toLocaleTimeString("en-NZ", {
+        timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true,
+      });
+      const dateStr = new Date(hoverMs).toLocaleDateString("en-NZ", {
+        timeZone: TZ, weekday: "short", day: "numeric", month: "short",
+      });
+
+      tip.innerHTML = `
+        <div class="tt-time">${dateStr} ${timeStr}${nearLabel}</div>
+        <div class="tt-row">
+          <span class="tt-label">Height</span>
+          <span class="tt-val">${height} m</span>
+        </div>`;
+      tip.style.display = "block";
+
+      // Position: above canvas, flipped left when near right edge
+      const sectionRect = section.getBoundingClientRect();
+      const cursorLeft  = e.clientX - sectionRect.left;
+      const tipW        = tip.offsetWidth;
+      const canvasTop   = canvas.getBoundingClientRect().top - sectionRect.top;
+      tip.style.top  = `${canvasTop - tip.offsetHeight - 6}px`;
+      tip.style.left = cursorLeft + tipW + 8 > sectionRect.width
+        ? `${cursorLeft - tipW - 8}px`
+        : `${cursorLeft + 8}px`;
+    };
+
+    canvas.onmouseleave = () => { tip.style.display = "none"; };
+
     const dpr = window.devicePixelRatio || 1;
     const W   = canvas.offsetWidth  || 280;
     const H   = canvas.offsetHeight || 56;

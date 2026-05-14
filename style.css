@@ -526,6 +526,29 @@ body {
   border-radius: 8px;
 }
 
+#tide-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 30;
+  background: rgba(9, 19, 31, 0.93);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+#tide-tooltip .tt-time {
+  margin-bottom: 3px;
+}
+
+.tides-section {
+  position: relative;
+}
+
 /* ── Chart section ──────────────────────────────────────────────────────── */
 .chart-section {
   position: relative;
