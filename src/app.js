@@ -635,7 +635,7 @@
         return d < (best?.d ?? Infinity) ? { ev, d } : best;
       }, null);
       const nearLabel = nearest && nearest.d < 90 * 60_000
-        ? ` · ${nearest.ev.type === "high" ? "High" : "Low"}`
+        ? ` · <span style="color:${nearest.ev.type === "high" ? "#ffa820" : "#3ee5ff"}">${nearest.ev.type === "high" ? "High" : "Low"}</span>`
         : "";
 
       const timeStr = new Date(hoverMs).toLocaleTimeString("en-NZ", {
