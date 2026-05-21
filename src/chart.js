@@ -573,26 +573,21 @@
     _drawTempLabels() {
       const { ctx, hours } = this;
 
-      // Group hour indices by calendar date in NZ timezone
-      const fmt = new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', dateStyle: 'short' });
-      const groups = new Map();
-      hours.forEach((h, i) => {
-        const day = fmt.format(new Date((h.validTimeUtc || 0) * 1000));
-        if (!groups.has(day)) groups.set(day, []);
-        groups.get(day).push(i);
-      });
-
-      // Collect one high + one low marker per calendar day
+      // Split into contiguous day/night runs, label max of each day-run and min of each night-run
       const markers = [];
-      for (const indices of groups.values()) {
-        let maxIdx = indices[0], minIdx = indices[0];
-        for (const i of indices) {
-          const t = hours[i].temperature ?? 0;
-          if (t > (hours[maxIdx].temperature ?? 0)) maxIdx = i;
-          if (t < (hours[minIdx].temperature ?? 0)) minIdx = i;
+      let runStart = 0;
+      for (let i = 1; i <= hours.length; i++) {
+        const ended = i === hours.length || hours[i].dayOrNight !== hours[runStart].dayOrNight;
+        if (!ended) continue;
+        const isDay  = hours[runStart].dayOrNight === "D";
+        let pickIdx  = runStart;
+        for (let j = runStart + 1; j < i; j++) {
+          const t = hours[j].temperature ?? 0;
+          const p = hours[pickIdx].temperature ?? 0;
+          if (isDay ? t > p : t < p) pickIdx = j;
         }
-        markers.push({ idx: maxIdx, kind: "high" });
-        if (minIdx !== maxIdx) markers.push({ idx: minIdx, kind: "low" });
+        markers.push({ idx: pickIdx, kind: isDay ? "high" : "low" });
+        runStart = i;
       }
 
       ctx.save();
@@ -608,7 +603,7 @@
         const labelY = isHigh ? curveY - STEM - 14 : curveY + STEM + 14;
         const stemY1 = isHigh ? curveY - 4  : curveY + 4;
         const stemY2 = isHigh ? labelY + 4  : labelY - 4;
-        const lbl    = `${isHigh ? "H" : "L"} ${Math.round(t)}°`;
+        const lbl    = `${Math.round(t)}°`;
 
         // Dot on the curve
         ctx.save();
