@@ -45,6 +45,7 @@
   const C = {
     bg:         "#f5f8fc",
     bgDay:      "rgba(255,210,140,0.22)",
+    bgNight:    "rgba(20,40,80,0.055)",
     tempFill:   ["rgba(255,160,30,0.04)", "rgba(255,140,20,0.28)"],
     tempLine:   "#ea7c1c",
     feelsLine:  "rgba(10,165,200,0.85)",
@@ -185,12 +186,10 @@
       ctx.fillStyle = C.bg;
       ctx.fillRect(0, 0, W, H);
 
-      // Subtle day bands
+      // Day/night bands
       for (let i = 0; i < hours.length; i++) {
-        if (hours[i].dayOrNight === "D") {
-          ctx.fillStyle = C.bgDay;
-          ctx.fillRect(PAD.left + i * this._pph, 0, this._pph, H);
-        }
+        ctx.fillStyle = hours[i].dayOrNight === "D" ? C.bgDay : C.bgNight;
+        ctx.fillRect(PAD.left + i * this._pph, 0, this._pph, H);
       }
 
       // Subtle horizontal grid lines in temp zone
