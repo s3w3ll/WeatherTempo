@@ -657,7 +657,7 @@ body {
   background: var(--tide-canvas);
   border-radius: 12px;
   overflow: hidden;
-  min-height: 100px;
+  min-height: 80px;
   position: relative;
 }
 
@@ -670,19 +670,19 @@ body {
 .tides-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
 }
 
 .tide-event {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   background: var(--stat-bg);
   border: 1px solid var(--card-border);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 8px;
+  padding: 5px 10px;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -695,25 +695,25 @@ body {
   background: color-mix(in oklch, var(--accent-cyan) 8%, var(--stat-bg));
 }
 
-.tide-event-icon { font-size: 1.25rem; line-height: 1; text-align: center; }
-.tide-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tide-event-icon { font-size: 1rem; line-height: 1; text-align: center; }
+.tide-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 
 .tide-type {
-  font-size: 0.66rem;
+  font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 
 .tide-time {
-  font-size: 0.96rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 .tide-height {
-  font-size: 0.92rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--accent-cyan);
   font-variant-numeric: tabular-nums;
