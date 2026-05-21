@@ -545,10 +545,10 @@
 
     // UV — current reading + today's peak in brackets + UV≥3 window as sub-label
     const { peakUV, uvWindow } = uvInfo(data.hourly || []);
-    const uvBase = uvLabel(c.uvIndex);
-    const uvPeak = (peakUV != null && peakUV > (c.uvIndex ?? -1)) ? ` (${uvLabel(peakUV)})` : "";
-    el("uv-index").textContent = c.uvIndex != null ? `${uvBase}${uvPeak}` : "—";
-    el("uv-label").textContent = uvWindow ? `UV >3 · ${uvWindow}` : "UV >3";
+    el("uv-index").textContent = c.uvIndex != null ? `Current: ${uvLabel(c.uvIndex)}` : "—";
+    el("uv-label").textContent = peakUV != null
+      ? `Peak: ${uvLabel(peakUV)}${uvWindow ? ` · ${uvWindow}` : ""}`
+      : "UV";
 
     // Astronomy
     el("sunrise").textContent    = fmtShortTime(c.sunriseUtc);
@@ -624,10 +624,10 @@
     const liveIcon = document.getElementById("current-icon");
     if (liveIcon) liveIcon.textContent = iconFor(c.iconCode, isDaytime(c) ? "D" : "N");
     const { peakUV: livePeak, uvWindow: liveWin } = uvInfo(hourly || []);
-    const liveBase  = uvLabel(c.uvIndex);
-    const livePkStr = (livePeak != null && livePeak > (c.uvIndex ?? -1)) ? ` (${uvLabel(livePeak)})` : "";
-    el("uv-index").textContent = c.uvIndex != null ? `${liveBase}${livePkStr}` : "—";
-    el("uv-label").textContent = liveWin ? `UV >3 · ${liveWin}` : "UV >3";
+    el("uv-index").textContent = c.uvIndex != null ? `Current: ${uvLabel(c.uvIndex)}` : "—";
+    el("uv-label").textContent = livePeak != null
+      ? `Peak: ${uvLabel(livePeak)}${liveWin ? ` · ${liveWin}` : ""}`
+      : "UV";
     if (c.condition) el("current-condition").textContent = c.condition;
 
     // Replace "28 min ago" with "Live · 11:14 am" after first successful tick.
