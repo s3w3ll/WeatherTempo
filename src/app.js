@@ -612,7 +612,7 @@
     );
 
     // ── Tooltip setup ────────────────────────────────────────────────────────
-    const section = canvas.closest(".tides-section");
+    const section = canvas.closest(".tides-card");
     let tip = document.getElementById("tide-tooltip");
     if (!tip) {
       tip = document.createElement("div");
@@ -666,14 +666,23 @@
 
     canvas.onmouseleave = () => { tip.style.display = "none"; };
 
-    const dpr = window.devicePixelRatio || 1;
-    const W   = canvas.offsetWidth  || 280;
-    const H   = canvas.offsetHeight || 56;
-
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr  = window.devicePixelRatio || 1;
+    const W    = rect.width  || 320;
+    const H    = rect.height || 180;
+    canvas.width  = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width  = W + "px";
+    canvas.style.height = H + "px";
     const ctx = canvas.getContext("2d");
     ctx.scale(dpr, dpr);
+
+    const cs         = getComputedStyle(document.documentElement);
+    const curveColor = cs.getPropertyValue('--tide-curve').trim()  || 'rgba(10,140,200,0.9)';
+    const fillA      = cs.getPropertyValue('--tide-fill-a').trim() || 'rgba(80,170,220,0.55)';
+    const fillB      = cs.getPropertyValue('--tide-fill-b').trim() || 'rgba(140,200,235,0.4)';
+    const fillC      = cs.getPropertyValue('--tide-fill-c').trim() || 'rgba(220,235,250,0.15)';
+    const canvasBg   = cs.getPropertyValue('--tide-canvas').trim() || 'rgba(225,235,250,0.7)';
 
     const PAD_V = 8;
     const heights = pts.map(p => p.height);
@@ -684,14 +693,14 @@
     const yOf = (h) => H - PAD_V - ((h - hMin) / (hMax - hMin)) * (H - PAD_V * 2);
 
     // ── Background
-    ctx.fillStyle = "rgba(5,15,30,0.6)";
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, W, H);
 
     // ── Filled area under curve
     const areaGrad = ctx.createLinearGradient(0, PAD_V, 0, H);
-    areaGrad.addColorStop(0,   "rgba(30,140,200,0.5)");
-    areaGrad.addColorStop(0.6, "rgba(10,60,120,0.35)");
-    areaGrad.addColorStop(1,   "rgba(5,20,50,0.1)");
+    areaGrad.addColorStop(0,   fillA);
+    areaGrad.addColorStop(0.6, fillB);
+    areaGrad.addColorStop(1,   fillC);
 
     ctx.beginPath();
     ctx.moveTo(xOf(0), yOf(pts[0].height));
@@ -728,9 +737,9 @@
       const cp2y = y2 - (yOf(p3.height) - y1) / 6;
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x2, y2);
     }
-    ctx.strokeStyle = "rgba(60,200,255,0.9)";
+    ctx.strokeStyle = curveColor;
     ctx.lineWidth   = 1.8;
-    ctx.shadowColor = "rgba(60,200,255,0.5)";
+    ctx.shadowColor = curveColor;
     ctx.shadowBlur  = 4;
     ctx.stroke();
     ctx.shadowBlur  = 0;
