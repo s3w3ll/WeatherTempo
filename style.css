@@ -478,6 +478,122 @@ body {
   margin-top: 1px;
 }
 
+/* ── Hourly table card ───────────────────────────────────────────────────── */
+.hourly-table-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.hourly-table-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+.hourly-table-toggle:hover {
+  background: var(--stat-bg);
+}
+.hourly-toggle-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.hourly-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  margin-left: auto;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.hourly-table-toggle[aria-expanded="true"] .hourly-chevron {
+  transform: rotate(180deg);
+}
+
+.hourly-table-wrap {
+  display: none;
+  border-top: 1px solid var(--card-border);
+}
+.hourly-table-wrap.open {
+  display: block;
+}
+
+.hourly-table-scroll {
+  overflow-x: auto;
+}
+
+.hourly-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.hourly-table thead tr {
+  background: var(--stat-bg);
+}
+.hourly-table th {
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+.hourly-table td {
+  padding: 5px 12px;
+  color: var(--text);
+  border-bottom: 1px solid var(--card-border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Day/night row tinting — mirrors chart C.bgDay / C.bgNight */
+.hourly-table tr.hr-day  { background: rgba(255,210,140,0.18); }
+.hourly-table tr.hr-night { background: rgba(20,40,80,0.045); }
+
+/* Day divider row */
+.hourly-table tr.hr-day-label td {
+  background: var(--stat-bg);
+  color: var(--text-strong);
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 12px 5px;
+  border-bottom: 1px solid var(--card-border);
+  border-top: 2px solid var(--card-border);
+}
+
+.hourly-table td.hr-time {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.hourly-table td.hr-now {
+  color: var(--accent-warm);
+  font-weight: 700;
+}
+.hourly-table td.hr-temp  { color: var(--accent-warm); font-weight: 600; }
+.hourly-table td.hr-feels { color: var(--accent-cyan); }
+.hourly-table td.hr-wind  { color: var(--accent-red); }
+.hourly-table td.hr-precip { color: var(--accent-blue); }
+
 /* ── Tides card ──────────────────────────────────────────────────────────── */
 .tides-card {
   padding: 20px 24px;

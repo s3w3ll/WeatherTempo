@@ -196,6 +196,42 @@
       </div>
     </section>
 
+    <!-- ── Hourly table ──────────────────────────────────────────────── -->
+    <section class="card hourly-table-card">
+      <button class="hourly-table-toggle" id="hourly-table-toggle" aria-expanded="false">
+        <svg class="hourly-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3h18M3 9h18M3 15h18M3 21h18"/>
+        </svg>
+        <span>Hourly Forecast — 5 days</span>
+        <svg class="hourly-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+      <div class="hourly-table-wrap" id="hourly-table-wrap">
+        <div class="hourly-table-scroll">
+          <table class="hourly-table" id="hourly-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Cond.</th>
+                <th>Temp</th>
+                <th>Feels</th>
+                <th>Humidity</th>
+                <th>Wind</th>
+                <th>Gust</th>
+                <th>Cloud</th>
+                <th>Rain%</th>
+                <th>QPF</th>
+                <th>Pressure</th>
+                <th>UV</th>
+              </tr>
+            </thead>
+            <tbody id="hourly-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- ── Tides ─────────────────────────────────────────────────────── -->
     <section class="card tides-card">
       <div class="tides-header">

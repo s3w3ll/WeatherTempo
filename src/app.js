@@ -581,6 +581,78 @@
       document.getElementById("day-card-4"),
       buildDayForecast(4, data.hourly || [], data.daily || [])
     );
+
+    renderHourlyTable(data.hourly || []);
+  }
+
+  function renderHourlyTable(hourly) {
+    const tbody  = document.getElementById("hourly-table-body");
+    const toggle = document.getElementById("hourly-table-toggle");
+    const wrap   = document.getElementById("hourly-table-wrap");
+    if (!tbody) return;
+
+    toggle.addEventListener("click", () => {
+      const open = wrap.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open);
+    });
+
+    const nowSec  = Date.now() / 1000;
+    const maxHrs  = 5 * 24;
+    const slots   = hourly.slice(0, maxHrs);
+    const fmt     = (v, u) => v != null ? `${Math.round(v)}${u}` : "—";
+    const fmt1    = (v, u) => v != null ? `${v.toFixed(1)}${u}` : "—";
+
+    let lastDay = null;
+    const rows  = [];
+
+    slots.forEach(h => {
+      if (!h.validTimeUtc) return;
+      const date     = new Date(h.validTimeUtc * 1000);
+      const dayKey   = date.toLocaleDateString("en-NZ", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" });
+      const timeStr  = date.toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+      const isNow    = Math.abs(h.validTimeUtc - nowSec) < 1800;
+      const isDay    = h.dayOrNight === "D";
+
+      if (dayKey !== lastDay) {
+        lastDay = dayKey;
+        const divRow = document.createElement("tr");
+        divRow.className = "hr-day-label";
+        const td = document.createElement("td");
+        td.colSpan = 12;
+        td.textContent = dayKey;
+        divRow.appendChild(td);
+        rows.push(divRow);
+      }
+
+      const tr = document.createElement("tr");
+      tr.className = isDay ? "hr-day" : "hr-night";
+
+      const cells = [
+        { cls: isNow ? "hr-time hr-now" : "hr-time",  val: isNow ? "Now" : timeStr },
+        { cls: "",                                      val: h.wxPhraseMedium || "—" },
+        { cls: "hr-temp",   val: fmt1(h.temperature, "°") },
+        { cls: "hr-feels",  val: fmt1(h.temperatureFeelsLike, "°") },
+        { cls: "",          val: fmt(h.relativeHumidity, "%") },
+        { cls: "hr-wind",   val: h.windSpeed != null ? `${Math.round(h.windSpeed)} km/h ${h.windDirectionCardinal || ""}` : "—" },
+        { cls: "hr-wind",   val: fmt(h.windGust, " km/h") },
+        { cls: "",          val: fmt(h.cloudCover, "%") },
+        { cls: "hr-precip", val: fmt(h.precipChance, "%") },
+        { cls: "hr-precip", val: h.qpf != null && h.qpf > 0 ? `${h.qpf.toFixed(1)} mm` : "—" },
+        { cls: "",          val: fmt1(h.pressureMeanSeaLevel, " hPa") },
+        { cls: "",          val: h.uvIndex != null ? uvLabel(h.uvIndex) : "—" },
+      ];
+
+      cells.forEach(({ cls, val }) => {
+        const td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = val;
+        tr.appendChild(td);
+      });
+
+      rows.push(tr);
+    });
+
+    tbody.append(...rows);
   }
 
   function degToCard(deg) {
