@@ -657,7 +657,7 @@ body {
   background: var(--tide-canvas);
   border-radius: 12px;
   overflow: hidden;
-  min-height: 150px;
+  min-height: 100px;
   position: relative;
 }
 
