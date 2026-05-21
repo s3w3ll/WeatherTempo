@@ -57,6 +57,7 @@
     dayDiv:     "rgba(255,255,255,0.10)",
     text:       "#e4eaf4",
     textMuted:  "#5a7a9a",
+    haloStroke: "rgba(245,248,252,0.8)",
   };
 
   // ── Utility ──────────────────────────────────────────────────────────────
@@ -596,25 +597,27 @@
           if (t < (hours[minIdx].temperature ?? 0)) minIdx = i;
         }
 
-        // High label (orange, above the point)
+        // High label (orange, above the point) — always drawn
         const maxT  = hours[maxIdx].temperature ?? 0;
         const maxX  = this.hourX(maxIdx);
         const maxY  = this.tempY(maxT) - 6;
         const maxLbl = `${Math.round(maxT)}°`;
-        ctx.strokeStyle = "rgba(9,19,31,0.7)";
+        ctx.strokeStyle = C.haloStroke;
         ctx.strokeText(maxLbl, maxX, maxY);
         ctx.fillStyle = C.tempLine;
         ctx.fillText(maxLbl, maxX, maxY);
 
-        // Low label (cyan, below the point)
-        const minT  = hours[minIdx].temperature ?? 0;
-        const minX  = this.hourX(minIdx);
-        const minY  = this.tempY(minT) + 14;
-        const minLbl = `${Math.round(minT)}°`;
-        ctx.strokeStyle = "rgba(9,19,31,0.7)";
-        ctx.strokeText(minLbl, minX, minY);
-        ctx.fillStyle = C.feelsLine;
-        ctx.fillText(minLbl, minX, minY);
+        // Low label (cyan, below the point) — only when different from high
+        if (minIdx !== maxIdx) {
+          const minT  = hours[minIdx].temperature ?? 0;
+          const minX  = this.hourX(minIdx);
+          const minY  = this.tempY(minT) + 14;
+          const minLbl = `${Math.round(minT)}°`;
+          ctx.strokeStyle = C.haloStroke;
+          ctx.strokeText(minLbl, minX, minY);
+          ctx.fillStyle = C.feelsLine;
+          ctx.fillText(minLbl, minX, minY);
+        }
       }
 
       ctx.restore();
