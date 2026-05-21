@@ -693,7 +693,7 @@ body {
 
 #chart-tooltip {
   display: none;
-  position: absolute;
+  position: fixed;
   z-index: 20;
   background: var(--card-bg);
   backdrop-filter: blur(16px);

@@ -710,10 +710,11 @@
       const oc = overlay.getContext("2d");
       oc.scale(this._dpr, this._dpr);
 
-      // Tooltip element (absolute within chart-section)
+      // Tooltip element (fixed to viewport so positioning is simple)
       const tip = document.createElement("div");
       tip.id = "chart-tooltip";
-      section.appendChild(tip);
+      tip.style.position = "fixed";
+      document.body.appendChild(tip);
 
       function showHover(e) {
         const rect   = scrollContainer.getBoundingClientRect();
@@ -757,14 +758,11 @@
         tip.innerHTML     = self._tooltipHTML(h, ts);
         tip.style.display = "block";
 
-        // Flip tooltip left when near the right edge
-        const sectionRect = section.getBoundingClientRect();
-        const cursorLeft  = e.clientX - sectionRect.left;
-        const TIP_W       = 210;
-        const flip        = cursorLeft + TIP_W + 20 > sectionRect.width;
-        tip.style.left    = (flip ? cursorLeft - TIP_W - 12 : cursorLeft + 16) + "px";
-        const cursorTop   = e.clientY - sectionRect.top;
-        tip.style.top     = Math.max(8, cursorTop - 20) + "px";
+        // Flip tooltip left when near the right edge of the viewport
+        const TIP_W    = 210;
+        const flip     = e.clientX + TIP_W + 20 > window.innerWidth;
+        tip.style.left = (flip ? e.clientX - TIP_W - 12 : e.clientX + 16) + "px";
+        tip.style.top  = (e.clientY - 20) + "px";
       }
 
       function hideHover() {
