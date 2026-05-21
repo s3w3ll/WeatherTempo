@@ -281,7 +281,19 @@
 
     // ── Temperature (val from daily, time from hourly max/min slot) ───────
     const hiSlot = slots.length ? pick(slots, function(h) { return h.temperature; }) : null;
-    const loSlot = slots.length ? pickMin(slots, function(h) { return h.temperature; }) : null;
+
+    // Overnight low: sunset tonight → next-day sunrise (spans calendar boundary)
+    const nextD = (daily || [])[dayIndex + 1];
+    const nightStart = d.sunsetTimeUtc || null;
+    const nightEnd   = nextD ? (nextD.sunriseTimeUtc || null) : null;
+    const nightSlots = (nightStart && nightEnd)
+      ? (hourly || []).filter(function(h) {
+          return h.validTimeUtc && h.validTimeUtc >= nightStart && h.validTimeUtc < nightEnd;
+        })
+      : [];
+    const loSlot = nightSlots.length
+      ? pickMin(nightSlots, function(h) { return h.temperature; })
+      : (slots.length ? pickMin(slots, function(h) { return h.temperature; }) : null);
 
     // ── Humidity ──────────────────────────────────────────────────────────
     const humHiSlot = slots.length ? pick(slots, function(h) { return h.relativeHumidity; }) : null;
@@ -328,7 +340,7 @@
       sunset:  d.sunsetTimeUtc   || null,
       temp: {
         max: { val: d.calendarDayTemperatureMax, utcSec: hiSlot ? hiSlot.validTimeUtc : null },
-        min: { val: d.calendarDayTemperatureMin, utcSec: loSlot ? loSlot.validTimeUtc : null },
+        min: { val: loSlot ? loSlot.temperature : d.calendarDayTemperatureMin, utcSec: loSlot ? loSlot.validTimeUtc : null },
       },
       humidity: {
         max: { val: humHiSlot ? humHiSlot.relativeHumidity : null, utcSec: humHiSlot ? humHiSlot.validTimeUtc : null },
