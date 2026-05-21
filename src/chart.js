@@ -758,10 +758,10 @@
         tip.innerHTML     = self._tooltipHTML(h, ts);
         tip.style.display = "block";
 
-        // Flip tooltip left when near the right edge of the viewport
+        // Show tooltip to the left; flip right when near the left edge
         const TIP_W    = 210;
-        const flip     = e.clientX + TIP_W + 20 > window.innerWidth;
-        tip.style.left = (flip ? e.clientX - TIP_W - 12 : e.clientX + 16) + "px";
+        const flip     = e.clientX - TIP_W - 20 < 0;
+        tip.style.left = (flip ? e.clientX + 16 : e.clientX - TIP_W - 12) + "px";
         tip.style.top  = (e.clientY - 20) + "px";
       }
 
