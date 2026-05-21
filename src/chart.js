@@ -572,12 +572,8 @@
     // ── 12. Temperature labels: calendar-day high & low ──────────────────
     _drawTempLabels() {
       const { ctx, hours } = this;
-      ctx.save();
-      ctx.font       = "bold 11px -apple-system, sans-serif";
-      ctx.textAlign  = "center";
-      ctx.lineWidth  = 3;
 
-      // Group hour indices by calendar date in Pacific/Auckland timezone
+      // Group hour indices by calendar date in NZ timezone
       const fmt = new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', dateStyle: 'short' });
       const groups = new Map();
       hours.forEach((h, i) => {
@@ -586,37 +582,66 @@
         groups.get(day).push(i);
       });
 
-      // For each day, find argmax and argmin temperature, then label them
+      // Collect one high + one low marker per calendar day
+      const markers = [];
       for (const indices of groups.values()) {
-        let maxIdx = indices[0];
-        let minIdx = indices[0];
+        let maxIdx = indices[0], minIdx = indices[0];
         for (const i of indices) {
           const t = hours[i].temperature ?? 0;
           if (t > (hours[maxIdx].temperature ?? 0)) maxIdx = i;
           if (t < (hours[minIdx].temperature ?? 0)) minIdx = i;
         }
+        markers.push({ idx: maxIdx, kind: "high" });
+        if (minIdx !== maxIdx) markers.push({ idx: minIdx, kind: "low" });
+      }
 
-        // High label (orange, above the point) — always drawn
-        const maxT  = hours[maxIdx].temperature ?? 0;
-        const maxX  = this.hourX(maxIdx);
-        const maxY  = this.tempY(maxT) - 6;
-        const maxLbl = `${Math.round(maxT)}°`;
+      ctx.save();
+      ctx.textAlign = "center";
+
+      for (const { idx, kind } of markers) {
+        const t      = hours[idx].temperature ?? 0;
+        const x      = this.hourX(idx);
+        const curveY = this.tempY(t);
+        const isHigh = kind === "high";
+        const color  = isHigh ? C.tempLine : C.feelsLine;
+        const STEM   = 10; // px from curve to label base
+        const labelY = isHigh ? curveY - STEM - 14 : curveY + STEM + 14;
+        const stemY1 = isHigh ? curveY - 4  : curveY + 4;
+        const stemY2 = isHigh ? labelY + 4  : labelY - 4;
+        const lbl    = `${isHigh ? "H" : "L"} ${Math.round(t)}°`;
+
+        // Dot on the curve
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, curveY, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle   = color;
         ctx.strokeStyle = C.haloStroke;
-        ctx.strokeText(maxLbl, maxX, maxY);
-        ctx.fillStyle = C.tempLine;
-        ctx.fillText(maxLbl, maxX, maxY);
+        ctx.lineWidth   = 2;
+        ctx.stroke();
+        ctx.fill();
+        ctx.restore();
 
-        // Low label (cyan, below the point) — only when different from high
-        if (minIdx !== maxIdx) {
-          const minT  = hours[minIdx].temperature ?? 0;
-          const minX  = this.hourX(minIdx);
-          const minY  = this.tempY(minT) + 14;
-          const minLbl = `${Math.round(minT)}°`;
-          ctx.strokeStyle = C.haloStroke;
-          ctx.strokeText(minLbl, minX, minY);
-          ctx.fillStyle = C.feelsLine;
-          ctx.fillText(minLbl, minX, minY);
-        }
+        // Stem line from dot to label
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 1;
+        ctx.globalAlpha = 0.5;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(x, stemY1);
+        ctx.lineTo(x, stemY2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Label text with halo
+        ctx.save();
+        ctx.font        = "bold 11px -apple-system, sans-serif";
+        ctx.lineWidth   = 3;
+        ctx.strokeStyle = C.haloStroke;
+        ctx.strokeText(lbl, x, labelY);
+        ctx.fillStyle   = color;
+        ctx.fillText(lbl, x, labelY);
+        ctx.restore();
       }
 
       ctx.restore();
