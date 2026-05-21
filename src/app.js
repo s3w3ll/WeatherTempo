@@ -58,6 +58,85 @@
     WNC: "🌘",
   };
 
+  // ── Weather icon (iconCode → emoji) ──────────────────────────────────────
+  function iconFor(iconCode, dayOrNight) {
+    const day  = dayOrNight !== "N";
+    const code = +iconCode;
+    if (code === 32 || code === 36) return "☀️";
+    if (code === 31) return "🌙";
+    if (code === 30 || code === 34) return day ? "⛅" : "☁️";
+    if (code === 29 || code === 33 || code === 27 || code === 28) return day ? "🌥️" : "☁️";
+    if (code === 26) return "☁️";
+    if (code === 9  || code === 11) return "🌦️";
+    if (code === 12 || code === 39 || code === 40) return "🌧️";
+    if ([13,14,15,16,41,42,43,46].includes(code)) return "❄️";
+    if ([17,18,35,37,38,47].includes(code)) return "⛈️";
+    if ([19,20,21,22].includes(code)) return "🌫️";
+    if (code === 23 || code === 24) return "💨";
+    return day ? "⛅" : "☁️";
+  }
+
+  function isDaytime(c) {
+    if (!c.sunriseUtc || !c.sunsetUtc) return true;
+    const now = Date.now() / 1000;
+    return now >= c.sunriseUtc && now < c.sunsetUtc;
+  }
+
+  // ── Hourly strip ──────────────────────────────────────────────────────────
+  function renderHourlyStrip(hourly, count = 10) {
+    const stripEl = document.getElementById("hourly-strip");
+    if (!stripEl) return;
+    const nowSec = Date.now() / 1000;
+    let startIdx = hourly.findIndex(h => (h.validTimeUtc || 0) >= nowSec);
+    if (startIdx < 0) startIdx = 0;
+    if (startIdx > 0) startIdx -= 1;
+    const slice = hourly.slice(startIdx, startIdx + count);
+    stripEl.innerHTML = slice.map((h, i) => {
+      const time = i === 0 ? "Now" : new Date(h.validTimeUtc * 1000)
+        .toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: true })
+        .replace(/ (am|pm)$/i, "$1");
+      const temp   = h.temperature != null ? `${Math.round(h.temperature)}°` : "—";
+      const icon   = iconFor(h.iconCode, h.dayOrNight);
+      const chance = h.precipChance ?? 0;
+      const showPp = chance >= 10;
+      return `<div class="hour-cell${i === 0 ? " now" : ""}">
+        <span class="hour-time">${time}</span>
+        <span class="hour-icon" aria-hidden="true">${icon}</span>
+        <span class="hour-temp">${temp}</span>
+        <span class="hour-precip ${showPp ? "" : "zero"}">${showPp ? chance + "%" : "·"}</span>
+      </div>`;
+    }).join("");
+  }
+
+  // ── Today aggregates (rain, gust, cloud, peak wind) ───────────────────────
+  function todayAggregates(hourly) {
+    const nowDate = new Date().toLocaleDateString("en-NZ", {
+      timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    });
+    const slots = hourly.filter(h => {
+      if (!h.validTimeUtc) return false;
+      return new Date(h.validTimeUtc * 1000)
+        .toLocaleDateString("en-NZ", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }) === nowDate;
+    });
+    if (!slots.length) return { rainMm: null, peakChance: null, peakGust: null };
+    return {
+      rainMm:     +slots.reduce((s, h) => s + (h.qpf || 0), 0).toFixed(1),
+      peakChance: Math.max(...slots.map(h => h.precipChance || 0)),
+      peakGust:   Math.max(...slots.map(h => h.windGust  || 0)),
+    };
+  }
+
+  // ── Pressure trend (3 h delta) ────────────────────────────────────────────
+  function pressureTrend(hourly, currentPressure) {
+    if (currentPressure == null) return null;
+    const nowSec = Date.now() / 1000;
+    const past = hourly.find(h => h.validTimeUtc && Math.abs(h.validTimeUtc - (nowSec - 3 * 3600)) < 1800);
+    if (!past || past.pressureMeanSeaLevel == null) return null;
+    const delta = currentPressure - past.pressureMeanSeaLevel;
+    if (Math.abs(delta) < 0.5) return "steady";
+    return delta > 0 ? "rising" : "falling";
+  }
+
   // ── UV label ─────────────────────────────────────────────────────────────
   function uvLabel(idx) {
     if (idx == null) return "—";
@@ -421,10 +500,17 @@
     const el = id => document.getElementById(id);
     el("last-updated").textContent = fmtRelative(data.meta?.updated);
 
-    // Current temp + condition
-    el("current-temp").textContent     = c.temp  != null ? `${Math.round(c.temp)}°` : "—°";
+    // Current temp + condition + icon
+    el("current-icon").textContent      = iconFor(c.iconCode, isDaytime(c) ? "D" : "N");
+    el("current-temp").textContent      = c.temp  != null ? `${Math.round(c.temp)}°` : "—°";
     el("current-condition").textContent = c.condition || c.cloudPhrase || "—";
-    el("current-feels").textContent    = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°` : "";
+    el("current-feels").textContent     = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°` : "";
+
+    // Hourly strip
+    renderHourlyStrip(data.hourly || [], 10);
+
+    // Today aggregates
+    const agg = todayAggregates(data.hourly || []);
 
     // Today high / low — uses calendarDay values from daily[0] for whole-day accuracy
     const hl = todayHighLow(data.hourly || [], data.daily || []);
@@ -442,7 +528,20 @@
     el("humidity").textContent  = c.humidity  != null ? `${c.humidity}%` : "—";
     el("wind").textContent      = c.windSpeed != null ? `${c.windSpeed} km/h` : "—";
     el("wind-dir").textContent  = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
+    const gustVal = c.windGust != null ? c.windGust : agg.peakGust;
+    el("gust").textContent      = gustVal != null ? `${Math.round(gustVal)} km/h` : "—";
     el("pressure").textContent  = c.pressure   != null ? `${Math.round(c.pressure)} hPa` : "—";
+    const trend = pressureTrend(data.hourly || [], c.pressure);
+    el("pressure-trend").textContent = trend === "rising" ? "↑ Rising" : trend === "falling" ? "↓ Falling" : trend === "steady" ? "→ Steady" : "Pressure";
+    el("dewpoint").textContent  = c.dewPoint  != null ? `${Math.round(c.dewPoint)}°` : "—";
+
+    // Cloud cover — nearest hour at or after now
+    const nowSec2 = Date.now() / 1000;
+    const curHour = (data.hourly || []).find(h => (h.validTimeUtc || 0) >= nowSec2 - 1800) || (data.hourly || [])[0];
+    el("cloud-cover").textContent = curHour?.cloudCover != null ? `${curHour.cloudCover}%` : "—";
+
+    el("rain-today").textContent  = agg.rainMm  != null ? `${agg.rainMm} mm` : "—";
+    el("rain-chance").textContent = agg.peakChance != null ? `Peak ${agg.peakChance}%` : "Rain today";
 
     // UV — current reading + today's peak in brackets + UV≥3 window as sub-label
     const { peakUV, uvWindow } = uvInfo(data.hourly || []);
@@ -519,7 +618,11 @@
     el("humidity").textContent      = c.humidity  != null ? `${c.humidity}%`                          : "—";
     el("wind").textContent          = c.windSpeed != null ? `${c.windSpeed} km/h`                     : "—";
     el("wind-dir").textContent      = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
+    el("gust").textContent          = c.windGust  != null ? `${c.windGust} km/h`                      : "—";
     el("pressure").textContent      = c.pressure  != null ? `${Math.round(c.pressure)} hPa`           : "—";
+    el("dewpoint").textContent      = c.dewPoint  != null ? `${Math.round(c.dewPoint)}°`              : "—";
+    const liveIcon = document.getElementById("current-icon");
+    if (liveIcon) liveIcon.textContent = iconFor(c.iconCode, isDaytime(c) ? "D" : "N");
     const { peakUV: livePeak, uvWindow: liveWin } = uvInfo(hourly || []);
     const liveBase  = uvLabel(c.uvIndex);
     const livePkStr = (livePeak != null && livePeak > (c.uvIndex ?? -1)) ? ` (${uvLabel(livePeak)})` : "";
