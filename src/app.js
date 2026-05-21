@@ -469,6 +469,14 @@
       document.getElementById("day-card-2"),
       buildDayForecast(2, data.hourly || [], data.daily || [])
     );
+    renderDayCard(
+      document.getElementById("day-card-3"),
+      buildDayForecast(3, data.hourly || [], data.daily || [])
+    );
+    renderDayCard(
+      document.getElementById("day-card-4"),
+      buildDayForecast(4, data.hourly || [], data.daily || [])
+    );
   }
 
   function degToCard(deg) {
