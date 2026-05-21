@@ -270,14 +270,14 @@ body {
 
 /* ── Conditions card ────────────────────────────────────────────────────── */
 .conditions-card {
-  padding: 22px 24px;
+  padding: 14px 20px 10px;
 }
 
 .cond-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .cond-main {
@@ -352,11 +352,11 @@ body {
 .hourly-strip {
   display: flex;
   gap: 2px;
-  padding: 12px 4px;
+  padding: 8px 4px;
   border-top: 1px solid var(--card-border);
   border-bottom: 1px solid var(--card-border);
   overflow-x: auto;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
   scrollbar-width: none;
 }
 .hourly-strip::-webkit-scrollbar { display: none; }
@@ -412,16 +412,16 @@ body {
   border: 1px solid var(--card-border);
   border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 18px;
+  margin-bottom: 10px;
 }
 
 .stat {
   background: var(--stat-bg);
-  padding: 13px 10px;
+  padding: 9px 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .stat-icon { width: 18px; height: 18px; color: var(--text-muted); }
@@ -447,7 +447,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 4px 2px;
+  padding: 8px 4px 2px;
   border-top: 1px solid var(--card-border);
 }
 
@@ -482,6 +482,7 @@ body {
 .hourly-table-card {
   padding: 0;
   overflow: hidden;
+  margin-bottom: 16px;
 }
 
 .hourly-table-toggle {
@@ -596,7 +597,7 @@ body {
 
 /* ── Tides card ──────────────────────────────────────────────────────────── */
 .tides-card {
-  padding: 20px 24px;
+  padding: 14px 20px 12px;
   margin-bottom: 16px;
   position: relative;
 }
@@ -606,7 +607,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .tides-title {
@@ -648,7 +649,7 @@ body {
 .tides-body {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
-  gap: 20px;
+  gap: 12px;
   align-items: stretch;
 }
 
@@ -656,7 +657,7 @@ body {
   background: var(--tide-canvas);
   border-radius: 12px;
   overflow: hidden;
-  min-height: 180px;
+  min-height: 150px;
   position: relative;
 }
 
