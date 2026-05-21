@@ -569,7 +569,7 @@
       ctx.restore();
     }
 
-    // ── 12. Temperature labels at peaks & troughs ─────────────────────────
+    // ── 12. Temperature labels: calendar-day high & low ──────────────────
     _drawTempLabels() {
       const { ctx, hours } = this;
       ctx.save();
@@ -577,25 +577,46 @@
       ctx.textAlign  = "center";
       ctx.lineWidth  = 3;
 
-      for (let i = 1; i < hours.length - 1; i++) {
-        const prev = hours[i - 1].temperature ?? 0;
-        const curr = hours[i].temperature     ?? 0;
-        const next = hours[i + 1].temperature ?? 0;
+      // Group hour indices by calendar date in Pacific/Auckland timezone
+      const fmt = new Intl.DateTimeFormat('en-NZ', { timeZone: 'Pacific/Auckland', dateStyle: 'short' });
+      const groups = new Map();
+      hours.forEach((h, i) => {
+        const day = fmt.format(new Date((h.validTimeUtc || 0) * 1000));
+        if (!groups.has(day)) groups.set(day, []);
+        groups.get(day).push(i);
+      });
 
-        const isPeak   = curr > prev && curr > next;
-        const isTrough = curr < prev && curr < next;
+      // For each day, find argmax and argmin temperature, then label them
+      for (const indices of groups.values()) {
+        let maxIdx = indices[0];
+        let minIdx = indices[0];
+        for (const i of indices) {
+          const t = hours[i].temperature ?? 0;
+          if (t > (hours[maxIdx].temperature ?? 0)) maxIdx = i;
+          if (t < (hours[minIdx].temperature ?? 0)) minIdx = i;
+        }
 
-        if (!isPeak && !isTrough) continue;
-
-        const x    = this.hourX(i);
-        const y    = this.tempY(curr) + (isPeak ? -6 : 14);
-        const lbl  = `${Math.round(curr)}°`;
-
+        // High label (orange, above the point)
+        const maxT  = hours[maxIdx].temperature ?? 0;
+        const maxX  = this.hourX(maxIdx);
+        const maxY  = this.tempY(maxT) - 6;
+        const maxLbl = `${Math.round(maxT)}°`;
         ctx.strokeStyle = "rgba(9,19,31,0.7)";
-        ctx.strokeText(lbl, x, y);
-        ctx.fillStyle   = isPeak ? C.tempLine : C.feelsLine;
-        ctx.fillText(lbl, x, y);
+        ctx.strokeText(maxLbl, maxX, maxY);
+        ctx.fillStyle = C.tempLine;
+        ctx.fillText(maxLbl, maxX, maxY);
+
+        // Low label (cyan, below the point)
+        const minT  = hours[minIdx].temperature ?? 0;
+        const minX  = this.hourX(minIdx);
+        const minY  = this.tempY(minT) + 14;
+        const minLbl = `${Math.round(minT)}°`;
+        ctx.strokeStyle = "rgba(9,19,31,0.7)";
+        ctx.strokeText(minLbl, minX, minY);
+        ctx.fillStyle = C.feelsLine;
+        ctx.fillText(minLbl, minX, minY);
       }
+
       ctx.restore();
     }
 
