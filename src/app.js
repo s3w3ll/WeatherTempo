@@ -127,12 +127,17 @@
   }
 
   // ── Pressure trend (3 h delta) ────────────────────────────────────────────
-  function pressureTrend(hourly, currentPressure) {
-    if (currentPressure == null) return null;
+  function pressureTrend(hourly) {
+    if (!hourly.length) return null;
     const nowSec = Date.now() / 1000;
-    const past = hourly.find(h => h.validTimeUtc && Math.abs(h.validTimeUtc - (nowSec - 3 * 3600)) < 1800);
-    if (!past || past.pressureMeanSeaLevel == null) return null;
-    const delta = currentPressure - past.pressureMeanSeaLevel;
+    const closest = (target) => hourly.reduce((best, h) => {
+      if (!h.validTimeUtc || h.pressureMeanSeaLevel == null) return best;
+      return Math.abs(h.validTimeUtc - target) < Math.abs((best?.validTimeUtc ?? Infinity) - target) ? h : best;
+    }, null);
+    const nowSlot  = closest(nowSec);
+    const pastSlot = closest(nowSec - 3 * 3600);
+    if (!nowSlot || !pastSlot || nowSlot === pastSlot) return null;
+    const delta = nowSlot.pressureMeanSeaLevel - pastSlot.pressureMeanSeaLevel;
     if (Math.abs(delta) < 0.5) return "steady";
     return delta > 0 ? "rising" : "falling";
   }
@@ -531,7 +536,7 @@
     const gustVal = c.windGust != null ? c.windGust : agg.peakGust;
     el("gust").textContent      = gustVal != null ? `${Math.round(gustVal)} km/h` : "—";
     el("pressure").textContent  = c.pressure   != null ? `${Math.round(c.pressure)} hPa` : "—";
-    const trend = pressureTrend(data.hourly || [], c.pressure);
+    const trend = pressureTrend(data.hourly || []);
     el("pressure-trend").textContent = trend === "rising" ? "↑ Rising" : trend === "falling" ? "↓ Falling" : trend === "steady" ? "→ Steady" : "Pressure";
     el("dewpoint").textContent  = c.dewPoint  != null ? `${Math.round(c.dewPoint)}°` : "—";
 

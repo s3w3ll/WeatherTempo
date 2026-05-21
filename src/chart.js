@@ -763,7 +763,8 @@
         const TIP_W       = 210;
         const flip        = cursorLeft + TIP_W + 20 > sectionRect.width;
         tip.style.left    = (flip ? cursorLeft - TIP_W - 12 : cursorLeft + 16) + "px";
-        tip.style.top     = "24px";
+        const cursorTop   = e.clientY - sectionRect.top;
+        tip.style.top     = Math.max(8, cursorTop - 20) + "px";
       }
 
       function hideHover() {
