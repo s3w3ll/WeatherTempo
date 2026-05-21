@@ -195,9 +195,9 @@
   // hourly forecast window only when the peak is still upcoming (i.e. the
   // forecast's max/min is within 1° of the calendar-day value).
   function todayHighLow(hourly, daily) {
-    const d0     = (daily || [])[0];
+    const d0  = (daily || [])[0];
+    const d1  = (daily || [])[1];
     const calMax = d0?.calendarDayTemperatureMax ?? null;
-    const calMin = d0?.calendarDayTemperatureMin ?? null;
 
     // Filter today's hours from the hourly forecast (contains only future hours)
     const nowDate = new Date().toLocaleDateString("en-NZ", {
@@ -209,20 +209,25 @@
         .toLocaleDateString("en-NZ", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }) === nowDate;
     });
 
-    // Resolve times: only show a time if the extremum is still in the forecast
-    // window — if the forecast peak matches the calendar-day peak (within 1°),
-    // the event is upcoming; otherwise it already occurred ("—" is shown).
-    let hiTime = null, loTime = null;
+    // High: calendar-day max with time from forecast if still upcoming
+    let hiTime = null;
     if (todayHours.length) {
       const fHi = todayHours.reduce((a, b) => (a.temperature > b.temperature ? a : b));
-      const fLo = todayHours.reduce((a, b) => (a.temperature < b.temperature ? a : b));
       if (calMax != null && Math.abs(fHi.temperature - calMax) <= 1) hiTime = fHi.validTimeUtc;
-      if (calMin != null && Math.abs(fLo.temperature - calMin) <= 1) loTime = fLo.validTimeUtc;
     }
-
-    // Fall back to hourly-only values if daily data isn't present
     const highTemp = calMax ?? (todayHours.length ? Math.max(...todayHours.map(h => h.temperature)) : null);
-    const lowTemp  = calMin ?? (todayHours.length ? Math.min(...todayHours.map(h => h.temperature)) : null);
+
+    // Overnight low: tonight's sunset → tomorrow's sunrise
+    const nightStart = d0?.sunsetTimeUtc ?? null;
+    const nightEnd   = d1?.sunriseTimeUtc ?? null;
+    const nightHours = (nightStart && nightEnd)
+      ? hourly.filter(h => h.validTimeUtc && h.validTimeUtc >= nightStart && h.validTimeUtc < nightEnd)
+      : [];
+    const loSlot = nightHours.length
+      ? nightHours.reduce((a, b) => (a.temperature < b.temperature ? a : b))
+      : null;
+    const lowTemp = loSlot?.temperature ?? (todayHours.length ? Math.min(...todayHours.map(h => h.temperature)) : null);
+    const loTime  = loSlot?.validTimeUtc ?? null;
 
     if (highTemp == null && lowTemp == null) return null;
     return {
