@@ -763,7 +763,7 @@
     const list   = document.getElementById("tides-list");
     const canvas = document.getElementById("tide-mini-chart");
 
-    const events = Tides.getNextTides(4, portId);
+    const events = Tides.getNextTides(portId, 4);
 
     if (!events || !events.length) {
       list.innerHTML = '<span class="tide-loading">No tide data available</span>';
@@ -809,9 +809,9 @@
     const pts    = Tides.getTodayCurve(portId);
     if (!pts || !pts.length) return;
     const events = Tides.findTideEvents(
+      portId,
       pts[0].time.getTime(),
-      pts[pts.length - 1].time.getTime(),
-      portId
+      pts[pts.length - 1].time.getTime()
     );
 
     // ── Tooltip setup ────────────────────────────────────────────────────────
@@ -830,7 +830,7 @@
       const rect  = canvas.getBoundingClientRect();
       const frac  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const hoverMs = startMs + frac * spanMs;
-      const height  = +Tides.tideHeight(hoverMs, portId).toFixed(2);
+      const height  = +Tides.tideHeight(portId, hoverMs).toFixed(2);
 
       // Find nearest high/low event within ±90 min
       const nearest = events.reduce((best, ev) => {
@@ -965,7 +965,7 @@
     const nfrac = (now - start) / span;
     if (nfrac >= 0 && nfrac <= 1) {
       const nx = nfrac * W;
-      const ny = yOf(Tides.tideHeight(now, portId));
+      const ny = yOf(Tides.tideHeight(portId, now));
       ctx.strokeStyle = "rgba(255,255,255,0.7)";
       ctx.lineWidth   = 1;
       ctx.setLineDash([2, 3]);
