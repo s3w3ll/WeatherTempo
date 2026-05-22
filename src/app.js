@@ -731,6 +731,7 @@
         if (!resp.ok) throw new Error(`Worker HTTP ${resp.status}`);
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
+        if (!data.hourly || data.hourly.length < 10) throw new Error("empty payload");
         onData(data);
       } catch (err) {
         console.warn("[WeatherTempo] Live refresh failed:", err.message);
