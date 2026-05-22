@@ -1,13 +1,9 @@
 name: Update Weather Data
 
 on:
-  schedule:
-    - cron: '*/30 * * * *'   # Every 30 minutes
+  # schedule:
+  #   - cron: '*/30 * * * *'   # Disabled — Cloudflare Worker is now the data source
   workflow_dispatch:           # Allow manual trigger
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/fetch_weather.py'
 
 permissions:
   contents: write

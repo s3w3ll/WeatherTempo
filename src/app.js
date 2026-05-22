@@ -2,26 +2,60 @@
  * app.js — Initialises the WeatherTempo dashboard.
  *
  * Flow:
- *  1. Fetch data/weather.json (generated every 30 min by GitHub Actions).
- *  2. Populate the conditions card (current temp, high/low + times, stats,
+ *  1. Read selected location from localStorage (default: christchurch).
+ *  2. Fetch full weather payload from Cloudflare Worker (?location=id).
+ *  3. Populate the conditions card (current temp, high/low + times, stats,
  *     astronomy, tides).
- *  3. Render the WeatherGraph-style canvas chart.
- *  4. Draw the tide mini-chart (see TODO below).
+ *  4. Render the WeatherGraph-style canvas chart.
  *
- * If the JSON is empty or unavailable, fall back to synthetic sample data
- * so the page always renders something useful.
+ * If the Worker is unavailable, fall back to synthetic sample data
+ * (all temperatures = 101°, visibly fake).
  */
 
 (function () {
   "use strict";
 
-  const TZ = "Pacific/Auckland";
+  // Set dynamically from selected location on boot
+  let TZ = "Pacific/Auckland";
 
-  // ── Live refresh (Cloudflare Worker proxy) ───────────────────────────────
-  // Paste the Worker URL here after running `npx wrangler deploy` in /workers.
-  // Leave blank to disable live refresh (card shows JSON data only).
+  // ── Worker (full-payload, multi-location) ────────────────────────────────
   const WORKER_URL = "https://weathertempo-pws-proxy.forgesync.workers.dev";
   const REFRESH_INTERVAL_MS = 5 * 60 * 1000;   // 5 minutes
+
+  // ── Location config (mirrors src/locations.js for use inside this IIFE) ─
+  const LOCATIONS = [
+    { id: "kaitaia",          name: "Kaitaia",          region: "New Zealand", lat: -35.1136, lon: 173.2655, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "auckland",      tideLabel: "Kaitaia — Tides" },
+    { id: "whangarei",        name: "Whangārei",        region: "New Zealand", lat: -35.7275, lon: 174.3236, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "auckland",      tideLabel: "Whangārei — Tides" },
+    { id: "auckland",         name: "Auckland",         region: "New Zealand", lat: -36.8485, lon: 174.7633, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "auckland",      tideLabel: "Auckland — Tides" },
+    { id: "tauranga",         name: "Tauranga",         region: "New Zealand", lat: -37.6878, lon: 176.1651, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "tauranga",     tideLabel: "Tauranga — Tides" },
+    { id: "hamilton",         name: "Hamilton",         region: "New Zealand", lat: -37.7870, lon: 175.2793, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "gisborne",         name: "Gisborne",         region: "New Zealand", lat: -38.6623, lon: 178.0176, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "gisborne",     tideLabel: "Gisborne — Tides" },
+    { id: "rotorua",          name: "Rotorua",          region: "New Zealand", lat: -38.1368, lon: 176.2497, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "taupo",            name: "Taupō",            region: "New Zealand", lat: -38.6857, lon: 176.0702, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "new-plymouth",     name: "New Plymouth",     region: "New Zealand", lat: -39.0556, lon: 174.0752, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "new-plymouth", tideLabel: "New Plymouth — Tides" },
+    { id: "napier",           name: "Napier",           region: "New Zealand", lat: -39.4928, lon: 176.9120, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "napier",       tideLabel: "Napier — Tides" },
+    { id: "palmerston-north", name: "Palmerston North", region: "New Zealand", lat: -40.3523, lon: 175.6082, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "masterton",        name: "Masterton",        region: "New Zealand", lat: -40.9522, lon: 175.6583, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "nelson",           name: "Nelson",           region: "New Zealand", lat: -41.2706, lon: 173.2840, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "nelson",       tideLabel: "Nelson — Tides" },
+    { id: "wellington",       name: "Wellington",       region: "New Zealand", lat: -41.2865, lon: 174.7762, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "wellington",   tideLabel: "Wellington — Tides" },
+    { id: "blenheim",         name: "Blenheim",         region: "New Zealand", lat: -41.5134, lon: 173.9612, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "blenheim",     tideLabel: "Blenheim — Tides" },
+    { id: "westport",         name: "Westport",         region: "New Zealand", lat: -41.7500, lon: 171.5997, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "westport",     tideLabel: "Westport — Tides" },
+    { id: "tekapo",           name: "Tekapo",           region: "New Zealand", lat: -44.0053, lon: 170.4775, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "franz-josef",      name: "Franz Josef",      region: "New Zealand", lat: -43.3884, lon: 170.1815, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "christchurch",     name: "Christchurch",     region: "New Zealand", lat: -43.5321, lon: 172.6362, timezone: "Pacific/Auckland", pwsStation: "ICHRIS810", tidePort: "lyttelton",  tideLabel: "New Brighton Beach — Tides" },
+    { id: "geraldine",        name: "Geraldine",        region: "New Zealand", lat: -44.0900, lon: 171.2356, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "timaru",           name: "Timaru",           region: "New Zealand", lat: -44.3960, lon: 171.2553, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "timaru",       tideLabel: "Timaru — Tides" },
+    { id: "queenstown",       name: "Queenstown",       region: "New Zealand", lat: -45.0312, lon: 168.6626, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
+    { id: "dunedin",          name: "Dunedin",          region: "New Zealand", lat: -45.8788, lon: 170.5028, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "dunedin",      tideLabel: "Dunedin — Tides" },
+    { id: "invercargill",     name: "Invercargill",     region: "New Zealand", lat: -46.4132, lon: 168.3538, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "invercargill", tideLabel: "Invercargill — Tides" },
+  ];
+
+  function getLocation(id) {
+    return LOCATIONS.find(l => l.id === id) ?? LOCATIONS.find(l => l.id === "christchurch");
+  }
+
+  // Current active location (set on boot / location change)
+  let currentLocation = getLocation("christchurch");
 
   // ── Formatters ───────────────────────────────────────────────────────────
   function fmtTime(utcSec, opts = {}) {
@@ -579,7 +613,7 @@
     el("moon-emoji").textContent = MOON_EMOJI[t.moonPhaseCode] || "🌕";
 
     // Tides
-    populateTides();
+    populateTides(currentLocation.tidePort);
 
     // Day forecast cards
     renderDayCard(
@@ -680,96 +714,57 @@
   // ── Live refresh helpers ──────────────────────────────────────────────────
 
   /**
-   * Merge live PWS payload onto existing data.current, preserving fields the
-   * Worker does not supply (condition, sunriseUtc, sunsetUtc, moonPhase, …).
-   */
-  function buildCurrentFromPws(payload, existing) {
-    return Object.assign({}, existing, {
-      temp:          payload.temp,
-      feelsLike:     payload.feelsLike,
-      humidity:      payload.humidity,
-      windSpeed:     payload.windSpeed,
-      windGust:      payload.windGust,
-      windDirection: payload.windDirection,
-      windCardinal:  payload.windCardinal,
-      pressure:      payload.pressure,
-      uvIndex:       payload.uvIndex,
-      // Only overwrite condition when Worker returned one — preserves weather.json
-      // value as fallback if Open-Meteo is temporarily unavailable.
-      ...(payload.condition != null && { condition: payload.condition }),
-    });
-  }
-
-  /**
-   * Push live values to the DOM — only the 7 elements that the Worker covers.
-   * Does NOT touch: current-condition, today-high/low, sunrise, sunset, moon-*.
-   * hourly — the forecast array (unchanged between ticks, used for UV peak/window).
-   */
-  function updateLiveFields(c, fetchedAt, hourly) {
-    const el = id => document.getElementById(id);
-    el("current-temp").textContent  = c.temp      != null ? `${Math.round(c.temp)}°`                  : "—°";
-    el("current-feels").textContent = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°`  : "";
-    el("humidity").textContent      = c.humidity  != null ? `${c.humidity}%`                          : "—";
-    el("wind").textContent          = c.windSpeed != null ? `${c.windSpeed} km/h`                     : "—";
-    el("wind-dir").textContent      = c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "");
-    el("gust").textContent          = c.windGust  != null ? `${c.windGust} km/h`                      : "—";
-    el("pressure").textContent      = c.pressure  != null ? `${Math.round(c.pressure)} hPa`           : "—";
-    el("dewpoint").textContent      = c.dewPoint  != null ? `${Math.round(c.dewPoint)}°`              : "—";
-    const liveIcon = document.getElementById("current-icon");
-    if (liveIcon) liveIcon.textContent = iconFor(c.iconCode, isDaytime(c) ? "D" : "N");
-    const { peakUV: livePeak, uvWindow: liveWin } = uvInfo(hourly || []);
-    el("uv-index").textContent = c.uvIndex != null ? `Current: ${uvLabel(c.uvIndex)}` : "—";
-    el("uv-label").textContent = livePeak != null
-      ? `Peak: ${uvLabel(livePeak)}${liveWin ? ` · ${liveWin}` : ""}`
-      : "UV";
-    if (c.condition) el("current-condition").textContent = c.condition;
-
-    // Replace "28 min ago" with "Live · 11:14 am" after first successful tick.
-    // obsTimeUtc = when the station recorded; fetchedAt = when Worker ran (fallback).
-    if (fetchedAt) {
-      const t = new Date(fetchedAt).toLocaleTimeString("en-NZ", {
-        timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true,
-      });
-      el("last-updated").textContent = `Live · ${t}`;
-    }
-  }
-
-  /**
    * Start the 5-minute live refresh loop.
    * Fires one tick immediately on page load (no cold-start delay).
+   * On each tick: re-fetch full payload from Worker and re-render the card.
    * Errors are swallowed — existing card values remain visible.
    */
-  function startLiveRefresh(data) {
-    if (!WORKER_URL) return;   // Worker not yet deployed — silently skip
+  function startLiveRefresh(onData) {
+    if (!WORKER_URL) return;
+
+    let intervalId = null;
 
     async function tick() {
       try {
-        const resp = await fetch(WORKER_URL, { cache: "no-store" });
+        const url  = `${WORKER_URL}?location=${encodeURIComponent(currentLocation.id)}`;
+        const resp = await fetch(url, { cache: "no-store" });
         if (!resp.ok) throw new Error(`Worker HTTP ${resp.status}`);
-        const payload = await resp.json();
-        if (payload.error) throw new Error(payload.error);
-        data.current = buildCurrentFromPws(payload, data.current);
-        // Prefer obsTimeUtc (when station recorded) over fetchedAt (when Worker ran)
-        const displayTs = payload.obsTimeUtc ?? payload.fetchedAt;
-        updateLiveFields(data.current, displayTs, data.hourly);
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        onData(data);
       } catch (err) {
         console.warn("[WeatherTempo] Live refresh failed:", err.message);
-        // Silent fail — card keeps showing last known values
       }
     }
 
-    tick();                               // immediate first read
-    setInterval(tick, REFRESH_INTERVAL_MS);
+    function start() {
+      tick();
+      intervalId = setInterval(tick, REFRESH_INTERVAL_MS);
+    }
+
+    function stop() {
+      clearInterval(intervalId);
+    }
+
+    start();
+    return { start, stop };
   }
 
   // ── Tides ─────────────────────────────────────────────────────────────────
-  function populateTides() {
+  function populateTides(portId) {
+    const section = document.getElementById("tides-section");
+    if (!portId) {
+      if (section) section.style.display = "none";
+      return;
+    }
+    if (section) section.style.display = "";
+
     const list   = document.getElementById("tides-list");
     const canvas = document.getElementById("tide-mini-chart");
 
-    const events = Tides.getNextTides(4);
+    const events = Tides.getNextTides(4, portId);
 
-    if (!events.length) {
+    if (!events || !events.length) {
       list.innerHTML = '<span class="tide-loading">No tide data available</span>';
       return;
     }
@@ -790,7 +785,7 @@
         </div>`;
     }).join("");
 
-    drawTideMiniChart(canvas);
+    drawTideMiniChart(canvas, portId);
   }
 
   // ── Tide mini-chart ───────────────────────────────────────────────────────
@@ -809,11 +804,13 @@
    *   • Add a "now" marker showing the current water level
    *   • Use a soft glow effect on the line with ctx.shadowBlur
    */
-  function drawTideMiniChart(canvas) {
-    const pts    = Tides.getTodayCurve();
+  function drawTideMiniChart(canvas, portId) {
+    const pts    = Tides.getTodayCurve(portId);
+    if (!pts || !pts.length) return;
     const events = Tides.findTideEvents(
       pts[0].time.getTime(),
-      pts[pts.length - 1].time.getTime()
+      pts[pts.length - 1].time.getTime(),
+      portId
     );
 
     // ── Tooltip setup ────────────────────────────────────────────────────────
@@ -832,7 +829,7 @@
       const rect  = canvas.getBoundingClientRect();
       const frac  = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       const hoverMs = startMs + frac * spanMs;
-      const height  = +Tides.tideHeight(hoverMs).toFixed(2);
+      const height  = +Tides.tideHeight(hoverMs, portId).toFixed(2);
 
       // Find nearest high/low event within ±90 min
       const nearest = events.reduce((best, ev) => {
@@ -967,7 +964,7 @@
     const nfrac = (now - start) / span;
     if (nfrac >= 0 && nfrac <= 1) {
       const nx = nfrac * W;
-      const ny = yOf(Tides.tideHeight(now));
+      const ny = yOf(Tides.tideHeight(now, portId));
       ctx.strokeStyle = "rgba(255,255,255,0.7)";
       ctx.lineWidth   = 1;
       ctx.setLineDash([2, 3]);
@@ -1028,27 +1025,24 @@
    */
   function generateSampleData() {
     const hours  = [];
-    const baseMs = Math.floor(Date.now() / 3_600_000) * 3_600_000; // current whole hour
+    const baseMs = Math.floor(Date.now() / 3_600_000) * 3_600_000;
 
     for (let i = 0; i < 120; i++) {
-      const ts      = Math.round((baseMs + i * 3_600_000) / 1000);
-      const lh      = (+new Date(ts * 1000).toLocaleString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: false }) + 24) % 24;
-      const cos_arg = 2 * Math.PI * (lh - 14) / 24;
-      const temp    = +(18 + 7  * Math.cos(cos_arg)).toFixed(1);
-      const feels   = +(temp - 1.5 + Math.sin(i * 0.3) * 0.8).toFixed(1);
-      const cc      = Math.max(0, Math.min(90, Math.round(35 + 30 * Math.sin(i * 0.12 + 1.5))));
-      const pp      = Math.max(0, Math.min(80, Math.round(20 + 25 * Math.sin(i * 0.10 + 2))));
-      const qpf     = pp > 45 ? +(0.4 * Math.sin(i * 0.10 + 2)).toFixed(2) : 0;
+      const ts  = Math.round((baseMs + i * 3_600_000) / 1000);
+      const lh  = (+new Date(ts * 1000).toLocaleString("en-NZ", { timeZone: TZ, hour: "numeric", hour12: false }) + 24) % 24;
+      const cc  = Math.max(0, Math.min(90, Math.round(35 + 30 * Math.sin(i * 0.12 + 1.5))));
+      const pp  = Math.max(0, Math.min(80, Math.round(20 + 25 * Math.sin(i * 0.10 + 2))));
+      const qpf = pp > 45 ? +(0.4 * Math.sin(i * 0.10 + 2)).toFixed(2) : 0;
 
       hours.push({
         validTimeUtc:          ts,
-        temperature:           temp,
-        temperatureFeelsLike:  feels,
-        relativeHumidity:      Math.max(40, Math.min(90, Math.round(65 - 10 * Math.cos(cos_arg)))),
-        windSpeed:             Math.round(13 + 5  * Math.sin(i * 0.2)),
+        temperature:           101,
+        temperatureFeelsLike:  101,
+        relativeHumidity:      Math.max(40, Math.min(90, Math.round(65 - 10 * Math.cos(2 * Math.PI * (lh - 14) / 24)))),
+        windSpeed:             Math.round(13 + 5 * Math.sin(i * 0.2)),
         windDirection:         Math.round(240 + 20 * Math.sin(i * 0.15)),
         windDirectionCardinal: "WSW",
-        windGust:              Math.round(16 + 5  * Math.abs(Math.sin(i * 0.2))),
+        windGust:              Math.round(16 + 5 * Math.abs(Math.sin(i * 0.2))),
         cloudCover:            cc,
         qpf:                   qpf,
         precipChance:          pp,
@@ -1063,28 +1057,27 @@
 
     const nowTs = Math.round(Date.now() / 1000);
 
-    // Build a daily entry per day — calendarDayTemperatureMax/Min are the
-    // midnight-to-midnight extrema of the cosine curve (peak 25° at 2pm, 11° at 2am)
     const daily = Array.from({ length: 5 }, (_, d) => ({
-      calendarDayTemperatureMax: 25 - d * 0.5,   // slight cooling trend
-      calendarDayTemperatureMin: 11 - d * 0.3,
-      temperatureMax:            25 - d * 0.5,
-      temperatureMin:            11 - d * 0.3,
-      sunriseTimeUtc: nowTs + d * 86400 - 3 * 3600,   // approx 3 h before current time
-      sunsetTimeUtc:  nowTs + d * 86400 + 6 * 3600,   // approx 6 h after current time
+      calendarDayTemperatureMax: 101,
+      calendarDayTemperatureMin: 101,
+      temperatureMax:            101,
+      temperatureMin:            101,
+      sunriseTimeUtc: nowTs + d * 86400 - 3 * 3600,
+      sunsetTimeUtc:  nowTs + d * 86400 + 6 * 3600,
     }));
 
     return {
-      meta:    { updated: new Date().toISOString(), location: "Christchurch, New Zealand (sample)", lat: -43.5321, lon: 172.6362 },
+      meta:    { updated: new Date().toISOString(), location: `${currentLocation.name}, New Zealand (sample)`, lat: currentLocation.lat, lon: currentLocation.lon },
       current: {
-        temp: hours[0].temperature, feelsLike: hours[0].temperatureFeelsLike,
+        temp: 101, feelsLike: 101,
         humidity: hours[0].relativeHumidity, pressure: hours[0].pressureMeanSeaLevel,
         windSpeed: hours[0].windSpeed, windGust: hours[0].windGust,
         windDirection: hours[0].windDirection, windCardinal: "WSW",
         uvIndex: hours[0].uvIndex, cloudPhrase: hours[0].wxPhraseMedium,
         condition: hours[0].wxPhraseMedium, iconCode: hours[0].iconCode,
-        sunriseUtc: nowTs - 3 * 3600,   // approximate: 3 h ago
-        sunsetUtc:  nowTs + 6 * 3600,   // approximate: 6 h ahead
+        sunriseUtc: nowTs - 3 * 3600,
+        sunsetUtc:  nowTs + 6 * 3600,
+        tempMax24h: 101, tempMin24h: 101,
       },
       today:  { moonPhase: "Waxing Crescent", moonPhaseCode: "WXC", moonPhaseDay: 5 },
       hourly: hours,
@@ -1092,46 +1085,120 @@
     };
   }
 
-  // ── Boot ──────────────────────────────────────────────────────────────────
-  async function boot() {
-    let data;
-    try {
-      const resp = await fetch("data/weather.json");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      data = await resp.json();
-      // Fall back to sample if hourly array is empty
-      if (!data.hourly || data.hourly.length < 10) throw new Error("empty");
-    } catch (e) {
-      console.warn("Using sample data:", e.message);
-      data = generateSampleData();
+  // ── Settings panel ────────────────────────────────────────────────────────
+  function initSettingsPanel(onLocationSelect) {
+    const btn   = document.getElementById("settings-btn");
+    const panel = document.getElementById("settings-panel");
+    const list  = document.getElementById("settings-location-list");
+    const close = document.getElementById("settings-close");
+
+    if (!btn || !panel || !list) return;
+
+    // Populate location list
+    list.innerHTML = LOCATIONS.map(loc => `
+      <button class="settings-loc-item${loc.id === currentLocation.id ? " active" : ""}"
+              data-id="${loc.id}">
+        <span class="settings-loc-name">${loc.name}</span>
+        <span class="settings-loc-region">${loc.region}</span>
+      </button>
+    `).join("");
+
+    function updateActive() {
+      list.querySelectorAll(".settings-loc-item").forEach(el => {
+        el.classList.toggle("active", el.dataset.id === currentLocation.id);
+      });
     }
 
-    populateCard(data);
+    list.addEventListener("click", e => {
+      const item = e.target.closest(".settings-loc-item");
+      if (!item) return;
+      const locId = item.dataset.id;
+      if (locId === currentLocation.id) { panel.classList.remove("open"); return; }
+      currentLocation = getLocation(locId);
+      TZ = currentLocation.timezone;
+      try { localStorage.setItem("weatherTempo.location", locId); } catch (_) {}
+      updateActive();
+      panel.classList.remove("open");
+      onLocationSelect();
+    });
 
-    // Read initial zoom value — restore from localStorage if available
+    btn.addEventListener("click", () => panel.classList.toggle("open"));
+    if (close) close.addEventListener("click", () => panel.classList.remove("open"));
+    panel.addEventListener("click", e => {
+      if (e.target === panel) panel.classList.remove("open");
+    });
+  }
+
+  // ── Update page meta for selected location ────────────────────────────────
+  function applyLocationMeta() {
+    const nameEl = document.getElementById("location-name");
+    if (nameEl) nameEl.textContent = `${currentLocation.name}, ${currentLocation.region}`;
+    document.title = `WeatherTempo — ${currentLocation.name}`;
+
+    const tidesLabel = document.getElementById("tides-label");
+    if (tidesLabel && currentLocation.tideLabel) tidesLabel.textContent = currentLocation.tideLabel;
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
+  async function boot() {
+    // Restore persisted location
+    try {
+      const stored = localStorage.getItem("weatherTempo.location");
+      if (stored) {
+        const loc = getLocation(stored);
+        if (loc) { currentLocation = loc; TZ = loc.timezone; }
+      }
+    } catch (_) {}
+
+    applyLocationMeta();
+
+    let liveRefresh = null;
+
     const zoomSel = document.getElementById("chart-zoom");
+    // Restore persisted zoom
     if (zoomSel) {
       try {
         const stored = localStorage.getItem("weatherTempo.chartDays");
         const validValues = Array.from(zoomSel.options).map(o => o.value);
-        if (stored && validValues.includes(stored)) {
-          zoomSel.value = stored;
-        }
-      } catch (_) { /* localStorage unavailable (e.g. Safari private mode) */ }
+        if (stored && validValues.includes(stored)) zoomSel.value = stored;
+      } catch (_) {}
     }
-    initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
 
-    // Re-render chart when zoom level changes; persist selection
+    async function loadAndRender() {
+      // Fetch from Worker
+      let data;
+      try {
+        const url  = `${WORKER_URL}?location=${encodeURIComponent(currentLocation.id)}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        data = await resp.json();
+        if (!data.hourly || data.hourly.length < 10) throw new Error("empty");
+      } catch (e) {
+        console.warn("[WeatherTempo] Using sample data:", e.message);
+        data = generateSampleData();
+      }
+
+      // Clear hourly table body on re-render (location switch)
+      const tbody = document.getElementById("hourly-table-body");
+      if (tbody) tbody.innerHTML = "";
+
+      populateCard(data);
+      initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+
+      return data;
+    }
+
+    let currentData = await loadAndRender();
+
+    // Zoom selector
     if (zoomSel) {
       zoomSel.addEventListener("change", () => {
-        initChart(data.hourly, data.current, +zoomSel.value);
-        try {
-          localStorage.setItem("weatherTempo.chartDays", zoomSel.value);
-        } catch (_) { /* storage unavailable */ }
+        initChart(currentData.hourly, currentData.current, +zoomSel.value);
+        try { localStorage.setItem("weatherTempo.chartDays", zoomSel.value); } catch (_) {}
       });
     }
 
-    // Redraw chart when container width changes (desktop resize, mobile rotation)
+    // Resize observer
     let resizeTimer;
     let roFirstRun = true;
     const chartSection = document.querySelector(".chart-section");
@@ -1140,12 +1207,40 @@
         if (roFirstRun) { roFirstRun = false; return; }
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-          initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+          initChart(currentData.hourly, currentData.current, zoomSel ? +zoomSel.value : 2);
         }, 150);
       }).observe(chartSection);
     }
 
-    startLiveRefresh(data);
+    // Live refresh loop — re-renders card on each tick with fresh Worker data
+    liveRefresh = startLiveRefresh(data => {
+      currentData = data;
+      const tbody = document.getElementById("hourly-table-body");
+      if (tbody) tbody.innerHTML = "";
+      populateCard(data);
+      initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+      const t = data.meta?.updated
+        ? new Date(data.meta.updated).toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true })
+        : null;
+      if (t) {
+        const el = document.getElementById("last-updated");
+        if (el) el.textContent = `Live · ${t}`;
+      }
+    });
+
+    // Settings panel — on location change, stop old refresh, reload, restart
+    initSettingsPanel(async () => {
+      if (liveRefresh) liveRefresh.stop();
+      applyLocationMeta();
+      currentData = await loadAndRender();
+      liveRefresh = startLiveRefresh(data => {
+        currentData = data;
+        const tbody = document.getElementById("hourly-table-body");
+        if (tbody) tbody.innerHTML = "";
+        populateCard(data);
+        initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+      });
+    });
   }
 
   document.addEventListener("DOMContentLoaded", boot);
