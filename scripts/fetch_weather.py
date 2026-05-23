@@ -112,6 +112,36 @@ def fetch_forecast():
     return r.json()
 
 # ── Transform ─────────────────────────────────────────────────────────────────
+def build_current_from_forecast(forecast_raw, first_daily):
+    """
+    Build current conditions from Open-Meteo data when PWS is unavailable.
+    Uses the 'current' block from Open-Meteo forecast API.
+    """
+    curr = forecast_raw.get("current", {})
+    deg  = curr.get("wind_direction_10m") or 0
+    code = curr.get("weather_code") or 0
+
+    return {
+        "temp":        curr.get("temperature_2m"),
+        "feelsLike":   curr.get("apparent_temperature"),
+        "humidity":    curr.get("relative_humidity_2m"),
+        "pressure":    curr.get("surface_pressure"),
+        "windSpeed":   curr.get("wind_speed_10m"),
+        "windGust":    curr.get("wind_gusts_10m"),
+        "windDirection": deg,
+        "windCardinal":  deg_to_cardinal(deg),
+        "uvIndex":     curr.get("uv_index"),
+        "dewPoint":    curr.get("dew_point_2m"),
+        "solarRad":    None,  # Not available in Open-Meteo
+        "condition":   wmo_phrase(code),
+        "cloudPhrase": wmo_phrase(code),
+        "iconCode":    wmo_icon(code),
+        "sunriseUtc":  first_daily.get("sunriseTimeUtc") if first_daily else None,
+        "sunsetUtc":   first_daily.get("sunsetTimeUtc") if first_daily else None,
+        "tempMax24h":  first_daily.get("calendarDayTemperatureMax") if first_daily else None,
+        "tempMin24h":  first_daily.get("calendarDayTemperatureMin") if first_daily else None,
+    }
+
 def build_current(pws_raw, daily_list, first_hourly=None):
     """
     Map PWS observation + forecast daily[0] into the current conditions object.
@@ -183,7 +213,7 @@ def build_hourly(raw):
 def build_daily(raw):
     d = raw["daily"]
     n = len(d["time"])
-    return [{
+    daily = [{
         "calendarDayTemperatureMax": d["temperature_2m_max"][i],
         "calendarDayTemperatureMin": d["temperature_2m_min"][i],
         "temperatureMax":            d["temperature_2m_max"][i],
@@ -191,6 +221,13 @@ def build_daily(raw):
         "sunriseTimeUtc":            d["sunrise"][i],
         "sunsetTimeUtc":             d["sunset"][i],
     } for i in range(n)]
+
+    # Enrich first daily entry with sunrise/sunset for fallback current conditions
+    if daily and len(daily) > 0:
+        daily[0]["sunriseTimeUtc"] = d["sunrise"][0]
+        daily[0]["sunsetTimeUtc"]  = d["sunset"][0]
+
+    return daily
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
@@ -200,14 +237,7 @@ if __name__ == "__main__":
 
     print("Fetching weather data for Christchurch, NZ …")
 
-    try:
-        pws = fetch_pws()
-        sid = (pws.get("observations") or [{}])[0].get("stationID", STATION_ID)
-        print(f"  ✓ Current conditions (PWS: {sid})")
-    except Exception as e:
-        print(f"  ✗ PWS current conditions failed: {e}", file=sys.stderr)
-        sys.exit(1)
-
+    # Fetch Open-Meteo first (mandatory — this is our baseline)
     try:
         forecast = fetch_forecast()
         n_h = len(forecast["hourly"]["time"])
@@ -219,6 +249,37 @@ if __name__ == "__main__":
 
     hourly_list = build_hourly(forecast)
     daily_list  = build_daily(forecast)
+
+    # Try to fetch PWS for hyperlocal current conditions (optional enhancement)
+    pws = None
+    try:
+        pws = fetch_pws()
+        sid = (pws.get("observations") or [{}])[0].get("stationID", STATION_ID)
+        print(f"  ✓ Current conditions (PWS: {sid})")
+    except Exception as e:
+        print(f"  ⚠ PWS current conditions unavailable: {e}", file=sys.stderr)
+        print(f"  → Falling back to Open-Meteo current data")
+
+    # TODO: Implement fallback strategy
+    # Decision point: How should we build current conditions?
+    # Option 1: Always use PWS if available, fall back to Open-Meteo current block
+    # Option 2: Blend PWS + Open-Meteo (e.g., PWS temp but OM wind if PWS missing)
+    # Option 3: Use first hourly slot as "current" approximation
+    #
+    # Trade-offs:
+    # - PWS is more accurate (actual station readings) but can be stale/offline
+    # - Open-Meteo "current" is model-based, updated every 15min, always available
+    # - Hourly[0] is slightly ahead (top of next hour) but guaranteed present
+    #
+    # Implement your strategy below:
+    if pws:
+        current = build_current(pws, daily_list, first_hourly=hourly_list[0] if hourly_list else None)
+    else:
+        # IMPLEMENT YOUR FALLBACK HERE
+        # Use build_current_from_forecast(forecast, daily_list[0]) for Open-Meteo current
+        # Or construct from hourly_list[0] for first hourly slot
+        current = build_current_from_forecast(forecast, daily_list[0] if daily_list else None)
+
     mp_name, mp_code, mp_day = moon_phase()
 
     payload = {
@@ -228,7 +289,7 @@ if __name__ == "__main__":
             "lat": LAT,
             "lon": LON,
         },
-        "current": build_current(pws, daily_list, first_hourly=hourly_list[0] if hourly_list else None),
+        "current": current,
         "today": {
             "moonPhase":     mp_name,
             "moonPhaseCode": mp_code,
@@ -237,6 +298,73 @@ if __name__ == "__main__":
         "hourly": hourly_list,
         "daily":  daily_list,
     }
+
+    # ── Data validation before commit ─────────────────────────────────────────
+    # TODO: Implement validation thresholds
+    # Decision point: What are reasonable bounds for Christchurch weather?
+    #
+    # Christchurch climate context:
+    # - Record high: 42.4°C (Feb 1973)
+    # - Record low: -9.4°C (Jul 1945)
+    # - Typical range: -5°C to 35°C
+    # - Pressure: 980-1040 hPa (normal sea level)
+    # - Wind: 0-150 km/h (150+ is cyclone territory)
+    #
+    # Trade-offs:
+    # - Too strict: reject valid extreme weather events
+    # - Too loose: allow garbage data through
+    #
+    # Implement your validation logic below:
+    def validate_payload(p):
+        """Validate weather data before committing to prevent garbage data."""
+        errors = []
+
+        # Check structure
+        if "current" not in p or "hourly" not in p or "daily" not in p:
+            errors.append("Missing required top-level keys")
+            return errors
+
+        curr = p["current"]
+
+        # IMPLEMENT YOUR VALIDATION HERE
+        # Example checks to add:
+        # - Temperature range: -20°C to 50°C (allows for extreme events)
+        # - All temps not identical (the 101° bug)
+        # - Minimum hourly data points
+        # - Pressure in reasonable range
+        # - Humidity 0-100%
+
+        # Basic sanity checks (you can expand these)
+        temp = curr.get("temp")
+        if temp is None:
+            errors.append("Current temperature is missing")
+        elif not (-20 <= temp <= 50):
+            errors.append(f"Temperature {temp}°C out of range [-20, 50]")
+
+        # Check for the "all identical temps" bug
+        if len(p["hourly"]) >= 3:
+            temps = [h.get("temperature") for h in p["hourly"][:10]]
+            if temps and len(set(temps)) == 1:
+                errors.append(f"All hourly temps are identical: {temps[0]}°C (data corruption)")
+
+        # Minimum data requirements
+        if len(p["hourly"]) < 24:
+            errors.append(f"Insufficient hourly data: {len(p['hourly'])} < 24")
+
+        if len(p["daily"]) < 1:
+            errors.append("Missing daily forecast data")
+
+        return errors
+
+    validation_errors = validate_payload(payload)
+    if validation_errors:
+        print(f"\n  ✗ DATA VALIDATION FAILED:", file=sys.stderr)
+        for err in validation_errors:
+            print(f"    - {err}", file=sys.stderr)
+        print(f"\n  Refusing to commit invalid data. Fix the source API calls.", file=sys.stderr)
+        sys.exit(1)
+
+    print("  ✓ Data validation passed")
 
     os.makedirs("data", exist_ok=True)
     with open("data/weather.json", "w") as f:

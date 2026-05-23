@@ -1,0 +1,25 @@
+[      84ms] [LOG] [WeatherTempo] Fetching from Worker (attempt 1/3)... @ http://localhost:8080/src/app.js:156
+[    1503ms] [LOG] [WeatherTempo] ✓ Worker fetch successful @ http://localhost:8080/src/app.js:175
+[ 3671585ms] [LOG] [WeatherTempo] Fetching from Worker (attempt 1/3)... @ http://localhost:8080/src/app.js:156
+[ 3672748ms] [LOG] [WeatherTempo] ✓ Worker fetch successful @ http://localhost:8080/src/app.js:175
+[ 3716232ms] [LOG] [WeatherTempo] Fetching from Worker (attempt 1/3)... @ http://localhost:8080/src/app.js:156
+[ 3716238ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://weathertempo-pws-proxy.forgesync.workers.dev/?location=christchurch:0
+[ 3716238ms] [WARNING] [WeatherTempo] Worker attempt 1 failed: Failed to fetch @ http://localhost:8080/src/app.js:180
+[ 3716238ms] [LOG] [WeatherTempo] Retrying in 1000ms... @ http://localhost:8080/src/app.js:185
+[ 3717242ms] [LOG] [WeatherTempo] Fetching from Worker (attempt 2/3)... @ http://localhost:8080/src/app.js:156
+[ 3717244ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://weathertempo-pws-proxy.forgesync.workers.dev/?location=christchurch:0
+[ 3717244ms] [WARNING] [WeatherTempo] Worker attempt 2 failed: Failed to fetch @ http://localhost:8080/src/app.js:180
+[ 3717244ms] [LOG] [WeatherTempo] Retrying in 2000ms... @ http://localhost:8080/src/app.js:185
+[ 3719255ms] [LOG] [WeatherTempo] Fetching from Worker (attempt 3/3)... @ http://localhost:8080/src/app.js:156
+[ 3719257ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://weathertempo-pws-proxy.forgesync.workers.dev/?location=christchurch:0
+[ 3719257ms] [WARNING] [WeatherTempo] Worker attempt 3 failed: Failed to fetch @ http://localhost:8080/src/app.js:180
+[ 3719257ms] [WARNING] [WeatherTempo] Worker unavailable, trying local fallback... @ http://localhost:8080/src/app.js:234
+[ 3719257ms] [LOG] [WeatherTempo] Trying local fallback: data/weather.json @ http://localhost:8080/src/app.js:199
+[ 3719261ms] [WARNING] [WeatherTempo] Local data validation warnings: [Temperature out of range: 101°C, Data is 31 hours old] @ http://localhost:8080/src/app.js:211
+[ 3719261ms] [LOG] [WeatherTempo] ✓ Local fallback successful (may be stale) @ http://localhost:8080/src/app.js:215
+[ 3719335ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://weathertempo-pws-proxy.forgesync.workers.dev/?location=christchurch:0
+[ 3719335ms] [WARNING] [WeatherTempo] Live refresh failed: Failed to fetch @ http://localhost:8080/src/app.js:930
+[ 4019328ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://weathertempo-pws-proxy.forgesync.workers.dev/?location=christchurch:0
+[ 4019328ms] [WARNING] [WeatherTempo] Live refresh failed: Failed to fetch @ http://localhost:8080/src/app.js:930
+[ 4319321ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://weathertempo-pws-proxy.forgesync.workers.dev/?location=christchurch:0
+[ 4319321ms] [WARNING] [WeatherTempo] Live refresh failed: Failed to fetch @ http://localhost:8080/src/app.js:930

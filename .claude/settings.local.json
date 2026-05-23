@@ -4,7 +4,13 @@
       "WebFetch(domain:api.open-meteo.com)",
       "Bash(python -c ' *)",
       "Bash(python *)",
-      "PowerShell(python analyze_transcripts.py)"
+      "PowerShell(python analyze_transcripts.py)",
+      "PowerShell(Out-File *)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "mcp__plugin_playwright_playwright__browser_run_code_unsafe",
+      "PowerShell(Stop-Process *)"
     ]
   }
 }

@@ -1,0 +1,114 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e8]: Christchurch, New Zealand
+        - button "Select location" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+      - generic [ref=e13]: —
+  - generic [ref=e14]: Fetching weather data…
+  - generic "Location selector":
+    - generic:
+      - generic:
+        - generic: Select Location
+        - button "Close":
+          - img
+  - main [ref=e15]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: ☁️
+          - generic [ref=e21]: —°
+          - generic [ref=e22]:
+            - generic [ref=e23]: —
+            - generic [ref=e24]: Feels like —°
+        - generic [ref=e25]:
+          - generic [ref=e26]:
+            - img [ref=e27]
+            - generic [ref=e29]: —°
+            - generic [ref=e30]: —
+          - generic [ref=e31]:
+            - img [ref=e32]
+            - generic [ref=e34]: —°
+            - generic [ref=e35]: —
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - img [ref=e39]
+          - generic [ref=e42]: —%
+          - generic [ref=e43]: Humidity
+        - generic [ref=e44]:
+          - img [ref=e45]
+          - generic [ref=e48]: — km/h
+          - generic [ref=e49]: —
+        - generic [ref=e50]:
+          - img [ref=e51]
+          - generic [ref=e54]: — km/h
+          - generic [ref=e55]: Gust
+        - generic [ref=e56]:
+          - img [ref=e57]
+          - generic [ref=e61]: — hPa
+          - generic [ref=e62]: Pressure
+        - generic [ref=e63]:
+          - img [ref=e64]
+          - generic [ref=e66]: —°
+          - generic [ref=e67]: Dew Point
+        - generic [ref=e68]:
+          - img [ref=e69]
+          - generic [ref=e71]: —%
+          - generic [ref=e72]: Cloud
+        - generic [ref=e73]:
+          - img [ref=e74]
+          - generic [ref=e76]: — mm
+          - generic [ref=e77]: Rain today
+        - generic [ref=e78]:
+          - img [ref=e79]
+          - generic [ref=e82]: —
+          - generic [ref=e83]: UV
+      - generic [ref=e84]:
+        - generic [ref=e85]:
+          - img [ref=e86]
+          - generic [ref=e90]:
+            - generic [ref=e91]: Sunrise
+            - generic [ref=e92]: —
+        - generic [ref=e94]:
+          - img [ref=e95]
+          - generic [ref=e99]:
+            - generic [ref=e100]: Sunset
+            - generic [ref=e101]: —
+        - generic [ref=e103]:
+          - generic [ref=e104]: 🌕
+          - generic [ref=e105]:
+            - generic [ref=e106]: Moon
+            - generic [ref=e107]: —
+    - generic [ref=e113]:
+      - generic [ref=e114]:
+        - generic [ref=e115]: Forecast
+        - generic [ref=e116]:
+          - text: "Zoom:"
+          - combobox "Zoom:" [ref=e117] [cursor=pointer]:
+            - option "1 day"
+            - option "2 days"
+            - option "3 days" [selected]
+            - option "4 days"
+            - option "5 days"
+      - generic [ref=e120]:
+        - generic [ref=e121]: Temperature
+        - generic [ref=e122]: Feels like
+        - generic [ref=e123]: Wind
+        - generic [ref=e124]: Precipitation
+        - generic [ref=e125]: Pressure
+    - button "Hourly Forecast — 5 days" [ref=e127] [cursor=pointer]:
+      - img [ref=e128]
+      - generic [ref=e130]: Hourly Forecast — 5 days
+      - img [ref=e131]
+    - generic [ref=e134]:
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - img [ref=e137]
+          - generic [ref=e140]: New Brighton Beach — Tides
+        - generic [ref=e141]:
+          - generic [ref=e142]: Now
+          - generic [ref=e143]: —
+          - generic [ref=e144]: —
+      - generic [ref=e149]: Computing…

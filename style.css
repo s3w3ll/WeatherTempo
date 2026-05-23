@@ -100,6 +100,40 @@ body {
   color: var(--text-muted);
 }
 
+/* ── Status banner (errors/warnings) ────────────────────────────────────── */
+.status-banner {
+  position: relative;
+  padding: 12px 24px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: center;
+  border-bottom: 1px solid;
+  animation: banner-slide-in 0.3s ease-out;
+}
+
+@keyframes banner-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.status-banner--loading {
+  background: rgba(37,99,216,0.08);
+  color: var(--accent-blue);
+  border-color: rgba(37,99,216,0.15);
+}
+
+.status-banner--warning {
+  background: rgba(234,124,28,0.08);
+  color: var(--accent-warm);
+  border-color: rgba(234,124,28,0.15);
+}
+
+.status-banner--error {
+  background: rgba(214,59,84,0.08);
+  color: var(--accent-red);
+  border-color: rgba(214,59,84,0.15);
+}
+
 /* ── Card base ──────────────────────────────────────────────────────────── */
 .card {
   background: var(--card-bg);

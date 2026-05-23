@@ -57,6 +57,200 @@
   // Current active location (set on boot / location change)
   let currentLocation = getLocation("christchurch");
 
+  // ── Error Handling & Resilient Data Fetching ────────────────────────────────
+  const DataFetcher = {
+    // Configuration
+    FETCH_TIMEOUT_MS: 10000,        // 10 second timeout
+    MAX_RETRIES: 2,                 // Try 3 times total (1 initial + 2 retries)
+    RETRY_DELAY_MS: 1000,           // Start with 1 second delay
+    STALENESS_WARNING_MS: 30 * 60 * 1000,  // Warn if data older than 30 min
+    STALENESS_ERROR_MS: 2 * 60 * 60 * 1000, // Error if data older than 2 hours
+
+    /**
+     * Fetch with timeout support (AbortController polyfill for older browsers).
+     */
+    async fetchWithTimeout(url, timeoutMs = this.FETCH_TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const resp = await fetch(url, {
+          signal: controller.signal,
+          cache: "no-store"
+        });
+        clearTimeout(timeoutId);
+        return resp;
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          throw new Error(`Request timeout after ${timeoutMs}ms`);
+        }
+        throw err;
+      }
+    },
+
+    /**
+     * Validate that fetched data is well-formed and recent.
+     */
+    validateData(data) {
+      const errors = [];
+
+      // Structure validation
+      if (!data || typeof data !== 'object') {
+        errors.push("Invalid data structure");
+        return errors;
+      }
+
+      if (!data.current) errors.push("Missing current conditions");
+      if (!data.hourly || !Array.isArray(data.hourly)) errors.push("Missing hourly array");
+      if (data.hourly && data.hourly.length < 10) errors.push("Insufficient hourly data");
+
+      // Temperature sanity check (detect the 101° bug)
+      if (data.current && data.current.temp !== undefined) {
+        const temp = data.current.temp;
+        if (temp < -50 || temp > 60) {
+          errors.push(`Temperature out of range: ${temp}°C`);
+        }
+      }
+
+      // Staleness check
+      if (data.meta && data.meta.updated) {
+        const age = Date.now() - new Date(data.meta.updated).getTime();
+        if (age > this.STALENESS_ERROR_MS) {
+          errors.push(`Data is ${Math.round(age / 3600000)} hours old`);
+        } else if (age > this.STALENESS_WARNING_MS) {
+          console.warn(`[WeatherTempo] Data is ${Math.round(age / 60000)} minutes old`);
+        }
+      }
+
+      return errors;
+    },
+
+    /**
+     * Attempt to fetch from Worker with retry logic.
+     * TODO: Implement your retry strategy
+     */
+    async fetchFromWorker(locationId) {
+      const url = `${WORKER_URL}?location=${encodeURIComponent(locationId)}`;
+      let lastError;
+
+      // TODO: Implement retry strategy
+      // Decision point: How should retries behave?
+      //
+      // Options:
+      // 1. Exponential backoff: delay = baseDelay * (2 ^ attemptNumber)
+      //    Pro: Gives server time to recover
+      //    Con: Slower total retry time
+      //
+      // 2. Fixed delay: same delay between each retry
+      //    Pro: Simpler, faster total retry time
+      //    Con: May overwhelm recovering server
+      //
+      // 3. No delay: retry immediately
+      //    Pro: Fastest recovery on transient errors
+      //    Con: May waste retries on persistent failures
+      //
+      // Implement your strategy below (current: exponential backoff):
+
+      for (let attempt = 0; attempt <= this.MAX_RETRIES; attempt++) {
+        try {
+          console.log(`[WeatherTempo] Fetching from Worker (attempt ${attempt + 1}/${this.MAX_RETRIES + 1})...`);
+
+          const resp = await this.fetchWithTimeout(url);
+
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+          }
+
+          const data = await resp.json();
+
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          const validationErrors = this.validateData(data);
+          if (validationErrors.length > 0) {
+            throw new Error(`Validation failed: ${validationErrors.join(', ')}`);
+          }
+
+          console.log(`[WeatherTempo] ✓ Worker fetch successful`);
+          return { success: true, data, source: 'worker' };
+
+        } catch (err) {
+          lastError = err;
+          console.warn(`[WeatherTempo] Worker attempt ${attempt + 1} failed:`, err.message);
+
+          // If not the last attempt, wait before retry
+          if (attempt < this.MAX_RETRIES) {
+            const delay = this.RETRY_DELAY_MS * Math.pow(2, attempt); // Exponential backoff
+            console.log(`[WeatherTempo] Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+
+      return { success: false, error: lastError, source: 'worker' };
+    },
+
+    /**
+     * Fallback: try to fetch local data/weather.json (for offline/backup).
+     */
+    async fetchFromLocal() {
+      try {
+        console.log(`[WeatherTempo] Trying local fallback: data/weather.json`);
+
+        const resp = await this.fetchWithTimeout('/data/weather.json');
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+
+        const data = await resp.json();
+
+        const validationErrors = this.validateData(data);
+        if (validationErrors.length > 0) {
+          console.warn(`[WeatherTempo] Local data validation warnings:`, validationErrors);
+          // Still use it, but warn user
+        }
+
+        console.log(`[WeatherTempo] ✓ Local fallback successful (may be stale)`);
+        return { success: true, data, source: 'local-fallback' };
+
+      } catch (err) {
+        console.error(`[WeatherTempo] Local fallback failed:`, err.message);
+        return { success: false, error: err, source: 'local' };
+      }
+    },
+
+    /**
+     * Master fetch strategy: Worker → Local → Sample Data.
+     */
+    async fetch(locationId) {
+      // Try Worker first
+      let result = await this.fetchFromWorker(locationId);
+      if (result.success) {
+        return result;
+      }
+
+      console.warn(`[WeatherTempo] Worker unavailable, trying local fallback...`);
+
+      // Try local JSON
+      result = await this.fetchFromLocal();
+      if (result.success) {
+        return result;
+      }
+
+      // Last resort: generate fake sample data
+      console.error(`[WeatherTempo] All data sources failed. Using synthetic sample data.`);
+      return {
+        success: true,
+        data: generateSampleData(),
+        source: 'sample-data',
+        error: 'All data sources unavailable'
+      };
+    }
+  };
+
   // ── Formatters ───────────────────────────────────────────────────────────
   function fmtTime(utcSec, opts = {}) {
     if (!utcSec) return "—";
@@ -1140,6 +1334,34 @@
     if (tidesLabel && currentLocation.tideLabel) tidesLabel.textContent = currentLocation.tideLabel;
   }
 
+  // ── Status banner for errors/warnings ─────────────────────────────────────
+  function updateStatusBanner(level, message) {
+    let banner = document.getElementById("status-banner");
+
+    // Clear banner
+    if (!message || level === "success") {
+      if (banner) banner.remove();
+      return;
+    }
+
+    // Create banner if needed
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "status-banner";
+      banner.className = "status-banner";
+      const header = document.querySelector(".header");
+      if (header && header.nextSibling) {
+        header.parentNode.insertBefore(banner, header.nextSibling);
+      } else {
+        document.body.insertBefore(banner, document.body.firstChild);
+      }
+    }
+
+    // Update banner content and style
+    banner.className = `status-banner status-banner--${level}`;
+    banner.textContent = message;
+  }
+
   // ── Boot ──────────────────────────────────────────────────────────────────
   async function boot() {
     // Restore persisted location
@@ -1166,27 +1388,32 @@
     }
 
     async function loadAndRender() {
-      // Fetch from Worker
-      let data;
-      try {
-        const url  = `${WORKER_URL}?location=${encodeURIComponent(currentLocation.id)}`;
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        data = await resp.json();
-        if (!data.hourly || data.hourly.length < 10) throw new Error("empty");
-      } catch (e) {
-        console.warn("[WeatherTempo] Using sample data:", e.message);
-        data = generateSampleData();
+      // Show loading state
+      updateStatusBanner("loading", "Fetching weather data…");
+
+      // Fetch data using resilient fetcher
+      const result = await DataFetcher.fetch(currentLocation.id);
+
+      // Update UI based on result
+      if (result.source === 'worker') {
+        updateStatusBanner("success", null); // Clear banner
+      } else if (result.source === 'local-fallback') {
+        const age = result.data.meta?.updated
+          ? Math.round((Date.now() - new Date(result.data.meta.updated).getTime()) / 60000)
+          : '?';
+        updateStatusBanner("warning", `Using cached data (${age} min old) — live data unavailable`);
+      } else if (result.source === 'sample-data') {
+        updateStatusBanner("error", `⚠️ All data sources failed — showing synthetic sample data`);
       }
 
       // Clear hourly table body on re-render (location switch)
       const tbody = document.getElementById("hourly-table-body");
       if (tbody) tbody.innerHTML = "";
 
-      populateCard(data);
-      initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+      populateCard(result.data);
+      initChart(result.data.hourly, result.data.current, zoomSel ? +zoomSel.value : 2);
 
-      return data;
+      return result.data;
     }
 
     let currentData = await loadAndRender();
