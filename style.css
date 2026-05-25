@@ -57,6 +57,16 @@ body {
   margin: 0;
 }
 
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+#site-footer {
+  text-align: center;
+  padding: 12px 0 16px;
+  font-size: 0.70rem;
+  color: var(--text-fade);
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── App shell ──────────────────────────────────────────────────────────── */
 .app {
   max-width: 1440px;
