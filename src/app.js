@@ -1447,6 +1447,12 @@
       if (tbody) tbody.innerHTML = "";
       populateCard(data);
       initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+
+      const footer = document.getElementById("site-footer");
+      if (footer && data.meta?.commit) {
+        footer.textContent = `build ${data.meta.commit}`;
+      }
+
       const t = data.meta?.updated
         ? new Date(data.meta.updated).toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true })
         : null;

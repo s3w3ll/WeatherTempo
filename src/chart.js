@@ -217,13 +217,13 @@
     _drawCloudCover() {
       const { ctx, hours } = this;
       ctx.save();
-      ctx.filter = "blur(12px)";
+      ctx.filter = "blur(5px)";
       for (let i = 0; i < hours.length; i++) {
         const cc = (hours[i].cloudCover || 0) / 100;
         if (cc < 0.10) continue;
         const x  = this.hourX(i);
         const ry = 20 * cc;
-        ctx.fillStyle = `rgba(200,220,255,${cc * 0.45})`;
+        ctx.fillStyle = `rgba(200,220,255,${cc * 0.70})`;
         ctx.beginPath();
         ctx.ellipse(x, (ZONE.cloudTop + ZONE.cloudBot) / 2, this._pph * 0.85, ry, 0, 0, Math.PI * 2);
         ctx.fill();

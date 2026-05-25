@@ -282,12 +282,21 @@ if __name__ == "__main__":
 
     mp_name, mp_code, mp_day = moon_phase()
 
+    commit_sha = os.environ.get("GITHUB_SHA", "")
+    if not commit_sha:
+        import subprocess
+        try:
+            commit_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        except Exception:
+            commit_sha = ""
+
     payload = {
         "meta": {
             "updated": datetime.now(timezone.utc).isoformat(),
             "location": "Christchurch, New Zealand",
             "lat": LAT,
             "lon": LON,
+            "commit": commit_sha[:7] if commit_sha else "",
         },
         "current": current,
         "today": {
