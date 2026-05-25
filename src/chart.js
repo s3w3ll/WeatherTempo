@@ -44,8 +44,8 @@
   // ── Colour helpers ───────────────────────────────────────────────────────
   const C = {
     bg:         "#f5f8fc",
-    bgDay:      "rgba(255,210,140,0.22)",
-    bgNight:    "rgba(20,40,80,0.055)",
+    bgDay:      "rgba(255,200,120,0.38)",
+    bgNight:    "rgba(20,40,80,0.14)",
     tempFill:   ["rgba(255,160,30,0.04)", "rgba(255,140,20,0.28)"],
     tempLine:   "#ea7c1c",
     feelsLine:  "rgba(10,165,200,0.85)",
