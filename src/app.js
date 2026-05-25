@@ -1262,7 +1262,7 @@
     }));
 
     return {
-      meta:    { updated: new Date().toISOString(), location: `${currentLocation.name}, New Zealand (sample)`, lat: currentLocation.lat, lon: currentLocation.lon },
+      meta:    { updated: new Date().toISOString(), location: `${currentLocation.name}, New Zealand (sample)`, lat: currentLocation.lat, lon: currentLocation.lon, commit: "" },
       current: {
         temp: 101, feelsLike: 101,
         humidity: hours[0].relativeHumidity, pressure: hours[0].pressureMeanSeaLevel,
