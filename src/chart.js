@@ -223,7 +223,7 @@
         if (cc < 0.10) continue;
         const x  = this.hourX(i);
         const ry = 20 * cc;
-        ctx.fillStyle = `rgba(210,215,215,${cc * 0.88})`;
+        ctx.fillStyle = `rgba(255,255,255,${cc * 0.88})`;
         ctx.beginPath();
         ctx.ellipse(x, (ZONE.cloudTop + ZONE.cloudBot) / 2, this._pph * 0.85, ry, 0, 0, Math.PI * 2);
         ctx.fill();
