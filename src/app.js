@@ -1449,8 +1449,15 @@
       initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
 
       const footer = document.getElementById("site-footer");
-      if (footer && data.meta?.commit) {
-        footer.textContent = `build ${data.meta.commit}`;
+      if (footer && data.meta?.updated) {
+        const d = new Date(data.meta.updated);
+        const pad = n => String(n).padStart(2, "0");
+        const parts = new Intl.DateTimeFormat("en-NZ", {
+          timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", hour12: false,
+        }).formatToParts(d);
+        const get = t => parts.find(p => p.type === t)?.value ?? "00";
+        footer.textContent = `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}`;
       }
 
       const t = data.meta?.updated
