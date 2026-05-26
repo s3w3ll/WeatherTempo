@@ -251,7 +251,7 @@
         ctx.lineTo(xRight, ZONE.cloudTop);         // back up to top-right
         ctx.closePath();
 
-        ctx.fillStyle = "rgba(255,255,255,0.72)";
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
         ctx.fill();
       }
 
