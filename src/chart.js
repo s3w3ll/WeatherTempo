@@ -217,15 +217,16 @@
     _drawCloudCover() {
       const { ctx, hours } = this;
       ctx.save();
-      ctx.filter = "blur(5px)";
+      ctx.filter = "blur(0px)";
       for (let i = 0; i < hours.length; i++) {
         const cc = (hours[i].cloudCover || 0) / 100;
         if (cc < 0.10) continue;
         const x  = this.hourX(i);
-        const ry = 20 * cc;
+        const ry = (ZONE.cloudBot - ZONE.cloudTop) / 2 * cc;
+        const cy = ZONE.cloudTop + ry;   // top edge stays fixed, bottom grows with cc
         ctx.fillStyle = `rgba(255,255,255,${cc * 0.88})`;
         ctx.beginPath();
-        ctx.ellipse(x, (ZONE.cloudTop + ZONE.cloudBot) / 2, this._pph * 0.85, ry, 0, 0, Math.PI * 2);
+        ctx.ellipse(x, cy, this._pph * 0.85, ry, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.filter = "none";
