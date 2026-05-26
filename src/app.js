@@ -1449,8 +1449,8 @@
       initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
 
       const footer = document.getElementById("site-footer");
-      if (footer && data.meta?.updated) {
-        const d = new Date(data.meta.updated);
+      if (footer && (data.meta?.builtAt || data.meta?.updated)) {
+        const d = new Date(data.meta.builtAt || data.meta.updated);
         const pad = n => String(n).padStart(2, "0");
         const parts = new Intl.DateTimeFormat("en-NZ", {
           timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",

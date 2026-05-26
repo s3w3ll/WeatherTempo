@@ -216,19 +216,45 @@
     // ── 2. Cloud cover ────────────────────────────────────────────────────
     _drawCloudCover() {
       const { ctx, hours } = this;
+      const zoneH = ZONE.cloudBot - ZONE.cloudTop;
+
       ctx.save();
-      ctx.filter = "blur(0px)";
-      for (let i = 0; i < hours.length; i++) {
-        const cc = (hours[i].cloudCover || 0) / 100;
-        if (cc < 0.10) continue;
-        const x  = this.hourX(i);
-        const ry = (ZONE.cloudBot - ZONE.cloudTop) / 2 * cc;
-        const cy = ZONE.cloudTop + ry;   // top edge stays fixed, bottom grows with cc
-        ctx.fillStyle = `rgba(255,255,255,${cc * 0.88})`;
+      ctx.filter = "blur(4px)";
+
+      // Walk hours, grouping consecutive cloudy hours into runs
+      let i = 0;
+      while (i < hours.length) {
+        if ((hours[i].cloudCover || 0) < 10) { i++; continue; }
+
+        // Collect run of cloudy hours
+        const start = i;
+        while (i < hours.length && (hours[i].cloudCover || 0) >= 10) i++;
+        const end = i; // exclusive
+
+        // Bottom-edge control points (hour centres, y = proportional to cc)
+        const pts = [];
+        for (let j = start; j < end; j++) {
+          pts.push({
+            x: this.hourX(j),
+            y: ZONE.cloudTop + zoneH * (hours[j].cloudCover / 100),
+          });
+        }
+
+        // Column-edge x positions for the shape's left/right walls
+        const xLeft  = PAD.left + start * this._pph;
+        const xRight = PAD.left + end   * this._pph;
+
         ctx.beginPath();
-        ctx.ellipse(x, cy, this._pph * 0.85, ry, 0, 0, Math.PI * 2);
+        ctx.moveTo(xLeft, ZONE.cloudTop);          // top-left corner
+        ctx.lineTo(pts[0].x, pts[0].y);            // down to first bottom point
+        smoothPath(ctx, pts, false);               // smooth bottom edge
+        ctx.lineTo(xRight, ZONE.cloudTop);         // back up to top-right
+        ctx.closePath();
+
+        ctx.fillStyle = "rgba(255,255,255,0.72)";
         ctx.fill();
       }
+
       ctx.filter = "none";
       ctx.restore();
     }

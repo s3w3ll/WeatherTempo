@@ -282,17 +282,29 @@ if __name__ == "__main__":
 
     mp_name, mp_code, mp_day = moon_phase()
 
+    import subprocess
     commit_sha = os.environ.get("GITHUB_SHA", "")
     if not commit_sha:
-        import subprocess
         try:
             commit_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
         except Exception:
             commit_sha = ""
 
+    # Timestamp of the last file modification committed to git (before this run)
+    try:
+        built_at = subprocess.check_output(
+            ["git", "log", "-1", "--format=%cI", "--", "data/weather.json"],
+            text=True
+        ).strip()
+        if not built_at:
+            built_at = datetime.now(timezone.utc).isoformat()
+    except Exception:
+        built_at = datetime.now(timezone.utc).isoformat()
+
     payload = {
         "meta": {
             "updated": datetime.now(timezone.utc).isoformat(),
+            "builtAt": built_at,
             "location": "Christchurch, New Zealand",
             "lat": LAT,
             "lon": LON,
