@@ -941,14 +941,19 @@ body {
 
 @media (max-width: 720px) {
   .app { padding: 0 14px 8px; }
-  .days-grid { grid-template-columns: 1fr; }
   .tides-body { grid-template-columns: 1fr; }
   .hourly-strip { justify-content: flex-start; }
 }
 
-@media (max-width: 380px) {
-  .app { padding: 0 10px 6px; }
+@media (max-width: 600px) {
+  .app { padding: 0 10px 8px; }
+  .header { padding: 12px 10px 10px; }
+  .conditions-card { padding: 12px 12px 10px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 380px) {
+  .app { padding: 0 8px 6px; }
 }
 
 /* ── Settings panel ─────────────────────────────────────────────────────── */
