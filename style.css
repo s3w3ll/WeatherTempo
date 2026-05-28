@@ -941,8 +941,10 @@ body {
 
 @media (max-width: 720px) {
   .app { padding: 0 14px 8px; }
+  .days-grid { grid-template-columns: 1fr; }
   .tides-body { grid-template-columns: 1fr; }
   .hourly-strip { justify-content: flex-start; }
+  .chart-section { padding: 16px 10px 12px; }
 }
 
 @media (max-width: 600px) {
