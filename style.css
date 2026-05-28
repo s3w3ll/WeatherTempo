@@ -161,6 +161,10 @@ body {
   align-items: start;
 }
 
+.hero-grid > * {
+  min-width: 0;
+}
+
 .days-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
