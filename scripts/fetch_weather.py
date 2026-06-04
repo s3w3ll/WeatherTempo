@@ -92,6 +92,11 @@ def fetch_forecast():
             "timeformat":         "unixtime",    # all times as Unix UTC timestamps
             "wind_speed_unit":    "kmh",
             "precipitation_unit": "mm",
+            "current": ",".join([
+                "temperature_2m", "apparent_temperature", "relative_humidity_2m",
+                "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
+                "surface_pressure", "uv_index", "weather_code", "cloud_cover", "dew_point_2m",
+            ]),
             "hourly": ",".join([
                 "temperature_2m", "apparent_temperature",
                 "precipitation_probability", "precipitation",
@@ -309,6 +314,11 @@ if __name__ == "__main__":
             "lat": LAT,
             "lon": LON,
             "commit": commit_sha[:7] if commit_sha else "",
+            "sourceStatus": {
+                "openMeteo": "ok",
+                "pws": "ok" if pws else "failed",
+                "currentSource": "pws" if pws else "open-meteo",
+            },
         },
         "current": current,
         "today": {

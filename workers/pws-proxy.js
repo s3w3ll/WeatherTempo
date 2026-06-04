@@ -316,6 +316,11 @@ export default {
         location: `${loc.name}, New Zealand`,
         lat:      loc.lat,
         lon:      loc.lon,
+        sourceStatus: {
+          openMeteo:     "ok",
+          pws:           pws ? "ok" : (loc.pwsStation ? "failed" : "n/a"),
+          currentSource: pws ? "pws" : "open-meteo",
+        },
       },
       current,
       today,

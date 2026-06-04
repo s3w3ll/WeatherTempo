@@ -210,11 +210,10 @@
         const validationErrors = this.validateData(data);
         if (validationErrors.length > 0) {
           console.warn(`[WeatherTempo] Local data validation warnings:`, validationErrors);
-          // Still use it, but warn user
         }
 
         console.log(`[WeatherTempo] ✓ Local fallback successful (may be stale)`);
-        return { success: true, data, source: 'local-fallback' };
+        return { success: true, data, source: 'local-fallback', validationErrors };
 
       } catch (err) {
         console.error(`[WeatherTempo] Local fallback failed:`, err.message);
@@ -1396,12 +1395,35 @@
 
       // Update UI based on result
       if (result.source === 'worker') {
-        updateStatusBanner("success", null); // Clear banner
+        const status = result.data.meta?.sourceStatus;
+        if (status?.pws === 'failed') {
+          updateStatusBanner("warning", "Live station unavailable — current conditions from forecast model");
+        } else {
+          updateStatusBanner("success", null);
+        }
       } else if (result.source === 'local-fallback') {
-        const age = result.data.meta?.updated
+        const ageMins = result.data.meta?.updated
           ? Math.round((Date.now() - new Date(result.data.meta.updated).getTime()) / 60000)
-          : '?';
-        updateStatusBanner("warning", `Using cached data (${age} min old) — live data unavailable`);
+          : null;
+        const ageStr = ageMins === null ? '?'
+          : ageMins > 1440 ? `${Math.round(ageMins / 1440)} days`
+          : ageMins > 60   ? `${Math.round(ageMins / 60)}h`
+          : `${ageMins}min`;
+        const status = result.data.meta?.sourceStatus;
+        const hasInvalidTemp = result.validationErrors?.some(e => e.includes('Temperature out of range'));
+
+        let bannerMsg, bannerLevel;
+        if (hasInvalidTemp) {
+          bannerLevel = "error";
+          bannerMsg = `Data source offline — cached data is ${ageStr} old`;
+        } else if (status?.pws === 'failed') {
+          bannerLevel = "warning";
+          bannerMsg = `Live data unavailable (${ageStr} old) — station offline, using forecast model`;
+        } else {
+          bannerLevel = "warning";
+          bannerMsg = `Using cached data (${ageStr} old) — live data unavailable`;
+        }
+        updateStatusBanner(bannerLevel, bannerMsg);
       } else if (result.source === 'sample-data') {
         updateStatusBanner("error", `⚠️ All data sources failed — showing synthetic sample data`);
       }
