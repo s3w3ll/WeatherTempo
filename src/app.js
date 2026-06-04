@@ -222,30 +222,20 @@
     },
 
     /**
-     * Master fetch strategy: Worker → Local → Sample Data.
+     * Master fetch strategy: Worker → Sample Data.
      */
     async fetch(locationId) {
-      // Try Worker first
-      let result = await this.fetchFromWorker(locationId);
+      const result = await this.fetchFromWorker(locationId);
       if (result.success) {
         return result;
       }
 
-      console.warn(`[WeatherTempo] Worker unavailable, trying local fallback...`);
-
-      // Try local JSON
-      result = await this.fetchFromLocal();
-      if (result.success) {
-        return result;
-      }
-
-      // Last resort: generate fake sample data
-      console.error(`[WeatherTempo] All data sources failed. Using synthetic sample data.`);
+      console.error(`[WeatherTempo] Worker unavailable. Using synthetic sample data.`);
       return {
         success: true,
         data: generateSampleData(),
         source: 'sample-data',
-        error: 'All data sources unavailable'
+        error: result.error?.message ?? 'Worker unavailable'
       };
     }
   };
@@ -1401,29 +1391,6 @@
         } else {
           updateStatusBanner("success", null);
         }
-      } else if (result.source === 'local-fallback') {
-        const ageMins = result.data.meta?.updated
-          ? Math.round((Date.now() - new Date(result.data.meta.updated).getTime()) / 60000)
-          : null;
-        const ageStr = ageMins === null ? '?'
-          : ageMins > 1440 ? `${Math.round(ageMins / 1440)} days`
-          : ageMins > 60   ? `${Math.round(ageMins / 60)}h`
-          : `${ageMins}min`;
-        const status = result.data.meta?.sourceStatus;
-        const hasInvalidTemp = result.validationErrors?.some(e => e.includes('Temperature out of range'));
-
-        let bannerMsg, bannerLevel;
-        if (hasInvalidTemp) {
-          bannerLevel = "error";
-          bannerMsg = `Data source offline — cached data is ${ageStr} old`;
-        } else if (status?.pws === 'failed') {
-          bannerLevel = "warning";
-          bannerMsg = `Live data unavailable (${ageStr} old) — station offline, using forecast model`;
-        } else {
-          bannerLevel = "warning";
-          bannerMsg = `Using cached data (${ageStr} old) — live data unavailable`;
-        }
-        updateStatusBanner(bannerLevel, bannerMsg);
       } else if (result.source === 'sample-data') {
         updateStatusBanner("error", `⚠️ All data sources failed — showing synthetic sample data`);
       }
