@@ -1,15 +1,17 @@
 // WeatherTempo — Scriptable iOS Widget
 // ---------------------------------------------------------------------------
 // Renders live Christchurch conditions from the WeatherTempo Cloudflare
-// Worker on a home-screen widget. Supports small + medium sizes.
+// Worker on a home-screen widget. Small/medium show a current-conditions
+// card; large adds a WeatherGraph-style meteogram (temp curve + precip
+// bars) rendered via DrawContext — see renderMeteogramImage() below.
 //
 // SETUP (one-time):
 //   1. Install "Scriptable" from the App Store (free).
 //   2. Open Scriptable → tap "+" → paste this whole file → name it
 //      "WeatherTempo" (top-left, tap the title).
 //   3. Long-press your home screen → "+" → search "Scriptable" → add a
-//      widget (small or medium) → tap it → set Script: WeatherTempo,
-//      When Interacting: Run Script.
+//      widget (small/medium/large — large gets you the meteogram) → tap
+//      it → set Script: WeatherTempo, When Interacting: Run Script.
 //   4. Widget refreshes on iOS's own schedule (usually every 15-60 min,
 //      not under app control — see REFRESH_MINUTES below for the hint
 //      Scriptable gives the OS).
@@ -21,6 +23,7 @@ const WORKER_URL = "https://weathertempo-pws-proxy.forgesync.workers.dev";
 const LOCATION_ID = "christchurch";
 const LOCATION_LABEL = "Christchurch";
 const REFRESH_MINUTES = 30; // matches the pipeline's ~30 min data cadence
+const CHART_HOURS = 16; // how many hourly points the large-widget meteogram plots
 
 // Palette lifted from src/chart.js CHART_COLORS so the widget matches the
 // web dashboard's look.
@@ -101,6 +104,148 @@ function textColor() {
 
 function mutedColor() {
   return Color.dynamic(new Color(COLORS.mutedLight), new Color(COLORS.mutedDark));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Meteogram rendering (large widget) — a simplified version of the
+// WeatherGraph-style chart in src/chart.js. Scriptable's ListWidget can't
+// draw curves/bars directly, so this renders the whole chart into a
+// DrawContext offscreen and the result gets dropped in as a single image.
+//
+// Kept deliberately simpler than chart.js: no cloud-cover overlay, no wind
+// row, no pressure line, straight-segment-through-midpoints smoothing
+// instead of true Catmull-Rom. Good candidates to layer in later if you
+// want closer parity with the web chart.
+// ─────────────────────────────────────────────────────────────────────────
+
+function scaleY(value, min, max, top, bottom) {
+  if (max === min) return (top + bottom) / 2;
+  const t = (value - min) / (max - min);
+  return bottom - t * (bottom - top);
+}
+
+// Smooths a polyline by routing through the midpoint of each consecutive
+// pair with a quadratic curve anchored at the real data point — cheap
+// approximation of chart.js's Catmull-Rom curve, good enough at widget
+// scale.
+function smoothPath(points) {
+  const path = new Path();
+  if (points.length === 0) return path;
+  path.move(points[0]);
+  for (let i = 1; i < points.length - 1; i++) {
+    const mid = new Point(
+      (points[i].x + points[i + 1].x) / 2,
+      (points[i].y + points[i + 1].y) / 2
+    );
+    path.addQuadCurve(mid, points[i]);
+  }
+  path.addLine(points[points.length - 1]);
+  return path;
+}
+
+// DrawContext has no native dashed-stroke option, so this walks each
+// segment of the polyline in dashLen/gapLen increments, stroking only the
+// "on" pieces — used for the feels-like line (cyan dashed in chart.js).
+function strokeDashedPolyline(draw, points, dashLen, gapLen, color, width) {
+  draw.setStrokeColor(color);
+  draw.setLineWidth(width);
+  let drawing = true;
+  let remaining = dashLen;
+  for (let i = 0; i < points.length - 1; i++) {
+    let cur = points[i];
+    const end = points[i + 1];
+    let segLen = Math.hypot(end.x - cur.x, end.y - cur.y);
+    const ux = segLen ? (end.x - cur.x) / segLen : 0;
+    const uy = segLen ? (end.y - cur.y) / segLen : 0;
+    while (segLen > 0.01) {
+      const step = Math.min(remaining, segLen);
+      const next = new Point(cur.x + ux * step, cur.y + uy * step);
+      if (drawing) {
+        const seg = new Path();
+        seg.move(cur);
+        seg.addLine(next);
+        draw.addPath(seg);
+        draw.strokePath();
+      }
+      cur = next;
+      segLen -= step;
+      remaining -= step;
+      if (remaining <= 0.01) {
+        drawing = !drawing;
+        remaining = drawing ? dashLen : gapLen;
+      }
+    }
+  }
+}
+
+function renderMeteogramImage(hourly, width, height) {
+  const draw = new DrawContext();
+  draw.size = new Size(width, height);
+  draw.opaque = false;
+  draw.respectScreenScale = true;
+
+  const n = hourly.length;
+  const xAt = (i) => (i / (n - 1)) * width;
+
+  const allTemps = hourly.map((h) => h.temperature).concat(hourly.map((h) => h.temperatureFeelsLike));
+  const minT = Math.min(...allTemps) - 1;
+  const maxT = Math.max(...allTemps) + 1;
+
+  // Zones, echoing chart.js's ZONE split (temp zone on top, precip strip
+  // below, axis labels at the very bottom) but compressed for widget size.
+  const axisH = 14;
+  const precipH = height * 0.2;
+  const tempTop = 2;
+  const tempBot = height - axisH - precipH - 6;
+  const precipTop = tempBot + 6;
+  const precipBot = height - axisH;
+
+  // Temperature area fill + curve
+  const tempPts = hourly.map((h, i) => new Point(xAt(i), scaleY(h.temperature, minT, maxT, tempTop, tempBot)));
+  const fillPath = smoothPath(tempPts);
+  fillPath.addLine(new Point(width, tempBot));
+  fillPath.addLine(new Point(0, tempBot));
+  fillPath.closeSubpath();
+  draw.setFillColor(new Color(COLORS.tempLine, 0.22));
+  draw.addPath(fillPath);
+  draw.fillPath();
+
+  draw.setStrokeColor(new Color(COLORS.tempLine));
+  draw.setLineWidth(2.5);
+  draw.addPath(smoothPath(tempPts));
+  draw.strokePath();
+
+  // Feels-like dashed line
+  const feelsPts = hourly.map((h, i) => new Point(xAt(i), scaleY(h.temperatureFeelsLike, minT, maxT, tempTop, tempBot)));
+  strokeDashedPolyline(draw, feelsPts, 5, 4, new Color("#5fd0e0"), 1.5);
+
+  // Precipitation-chance bars
+  const barW = Math.max(2, (width / n) * 0.5);
+  draw.setFillColor(new Color(COLORS.precip, 0.75));
+  hourly.forEach((h, i) => {
+    const pct = (h.precipChance || 0) / 100;
+    const barH = pct * (precipBot - precipTop);
+    if (barH < 1) return;
+    const barPath = new Path();
+    barPath.addRect(new Rect(xAt(i) - barW / 2, precipBot - barH, barW, barH));
+    draw.addPath(barPath);
+    draw.fillPath();
+  });
+
+  // Hour-of-day axis labels, every 4th point
+  draw.setFont(Font.systemFont(9));
+  draw.setTextColor(new Color(COLORS.mutedLight));
+  draw.setTextAlignedCenter();
+  hourly.forEach((h, i) => {
+    if (i % 4 !== 0) return;
+    const label = new Date(h.validTimeUtc * 1000)
+      .toLocaleString("en-NZ", { hour: "numeric", hour12: true, timeZone: "Pacific/Auckland" })
+      .replace(" ", "")
+      .toLowerCase();
+    draw.drawTextInRect(label, new Rect(xAt(i) - 18, height - axisH + 1, 36, axisH - 1));
+  });
+
+  return draw.getImage();
 }
 
 function buildSmallWidget(data) {
@@ -222,12 +367,80 @@ function buildMediumWidget(data) {
   return widget;
 }
 
+function buildLargeWidget(data) {
+  const widget = new ListWidget();
+  addBackground(widget);
+  widget.setPadding(14, 16, 10, 16);
+
+  const c = data.current;
+  const { symbol, color } = iconForCondition(c.iconCode);
+
+  const header = widget.addStack();
+  header.centerAlignContent();
+
+  const left = header.addStack();
+  left.layoutVertically();
+  const tempRow = left.addStack();
+  tempRow.centerAlignContent();
+  const tempText = tempRow.addText(fmtTemp(c.temp));
+  tempText.font = Font.boldSystemFont(30);
+  tempText.textColor = textColor();
+  tempRow.addSpacer(6);
+  const sfi = SFSymbol.named(symbol);
+  sfi.applyFont(Font.systemFont(22));
+  const iconEl = tempRow.addImage(sfi.image);
+  iconEl.imageSize = new Size(24, 24);
+  iconEl.tintColor = new Color(color);
+  const feels = left.addText(`Feels like ${fmtTemp(c.feelsLike)}`);
+  feels.font = Font.systemFont(11);
+  feels.textColor = mutedColor();
+
+  header.addSpacer();
+
+  const right = header.addStack();
+  right.layoutVertically();
+  const loc = right.addText(LOCATION_LABEL.toUpperCase());
+  loc.font = Font.mediumSystemFont(10);
+  loc.textColor = mutedColor();
+  loc.rightAlignText();
+  const cond = right.addText(c.condition || "");
+  cond.font = Font.systemFont(11);
+  cond.textColor = textColor();
+  cond.lineLimit = 1;
+  cond.rightAlignText();
+
+  widget.addSpacer(8);
+
+  // Meteogram — next CHART_HOURS hours of temp/feels-like/precip chance.
+  const hourly = (data.hourly || []).slice(0, CHART_HOURS);
+  if (hourly.length >= 2) {
+    const chartWidth = 300;
+    const chartHeight = 230;
+    const img = renderMeteogramImage(hourly, chartWidth, chartHeight);
+    const chartStack = widget.addStack();
+    chartStack.addSpacer();
+    const imgEl = chartStack.addImage(img);
+    imgEl.imageSize = new Size(chartWidth, chartHeight);
+    chartStack.addSpacer();
+  }
+
+  widget.addSpacer();
+
+  const footer = widget.addText(`Updated ${fmtUpdatedAgo(data.meta.updated)}`);
+  footer.font = Font.systemFont(9);
+  footer.textColor = mutedColor();
+
+  return widget;
+}
+
 async function run() {
   let widget;
   try {
     const data = await fetchWeather();
     widget =
-      config.widgetFamily === "medium"
+      config.widgetFamily === "large"
+        ? buildLargeWidget(data)
+        : config.widgetFamily === "medium"
         ? buildMediumWidget(data)
         : buildSmallWidget(data);
   } catch (err) {
@@ -251,7 +464,9 @@ async function run() {
     Script.setWidget(widget);
   } else {
     // Running the script manually inside Scriptable — show a preview.
-    if (config.widgetFamily === "medium") {
+    if (config.widgetFamily === "large") {
+      await widget.presentLarge();
+    } else if (config.widgetFamily === "medium") {
       await widget.presentMedium();
     } else {
       await widget.presentSmall();
