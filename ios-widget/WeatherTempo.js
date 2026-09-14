@@ -2,8 +2,9 @@
 // ---------------------------------------------------------------------------
 // Renders live Christchurch conditions from the WeatherTempo Cloudflare
 // Worker on a home-screen widget. Small/medium show a current-conditions
-// card; large adds a WeatherGraph-style meteogram (temp curve + precip
-// bars) rendered via DrawContext — see renderMeteogramImage() below.
+// card; large adds a 5-day WeatherGraph-style meteogram (temp curve with
+// daily hi/lo, cloud shading, rain bars, plus a per-day Wind/UV badge
+// strip) rendered via DrawContext — see renderMeteogramImage() below.
 //
 // SETUP (one-time):
 //   1. Install "Scriptable" from the App Store (free).
@@ -23,7 +24,9 @@ const WORKER_URL = "https://weathertempo-pws-proxy.forgesync.workers.dev";
 const LOCATION_ID = "christchurch";
 const LOCATION_LABEL = "Christchurch";
 const REFRESH_MINUTES = 30; // matches the pipeline's ~30 min data cadence
-const CHART_HOURS = 16; // how many hourly points the large-widget meteogram plots
+const CHART_DAYS = 5; // the worker returns exactly 5 days of hourly + daily data
+const CHART_HOURS = CHART_DAYS * 24;
+const WIND_SMOOTH_WINDOW = 5; // hours averaged per point on the wind line — wind is noisier hour-to-hour than temp, so it gets an extra smoothing pass the temp curve doesn't need
 
 // Palette lifted from src/chart.js CHART_COLORS so the widget matches the
 // web dashboard's look.
@@ -31,6 +34,7 @@ const COLORS = {
   bgLight: "#f5f8fc",
   bgDark: "#0e1420",
   tempLine: "#ea7c1c",   // orange — temperature
+  wind: "#e5484d",       // red — wind, matches chart.js's wind-zone line color
   precip: "#2563d8",     // blue — precipitation
   textLight: "#1a2640",
   textDark: "#e8edf5",
@@ -143,9 +147,25 @@ function smoothPath(points) {
   return path;
 }
 
+// Centered moving average over `windowSize` hours. smoothPath() only
+// softens the *geometry* of a path between points — it can't fix noisy
+// underlying data. Wind speed swings hour-to-hour far more than
+// temperature does, so the raw line looked jagged even after smoothPath();
+// averaging the values themselves first fixes that at the source.
+function movingAverage(values, windowSize) {
+  const half = Math.floor(windowSize / 2);
+  return values.map((_, i) => {
+    const start = Math.max(0, i - half);
+    const end = Math.min(values.length, i + half + 1);
+    const slice = values.slice(start, end);
+    return slice.reduce((sum, v) => sum + v, 0) / slice.length;
+  });
+}
+
 // DrawContext has no native dashed-stroke option, so this walks each
 // segment of the polyline in dashLen/gapLen increments, stroking only the
-// "on" pieces — used for the feels-like line (cyan dashed in chart.js).
+// "on" pieces — used for the wind line, so it stays visually distinct from
+// the solid temp curve it shares an axis with.
 function strokeDashedPolyline(draw, points, dashLen, gapLen, color, width) {
   draw.setStrokeColor(color);
   draw.setLineWidth(width);
@@ -178,27 +198,136 @@ function strokeDashedPolyline(draw, points, dashLen, gapLen, color, width) {
   }
 }
 
-function renderMeteogramImage(hourly, width, height) {
+function rotatePoint(px, py, cx, cy, angleRad) {
+  const dx = px - cx, dy = py - cy;
+  return new Point(
+    cx + dx * Math.cos(angleRad) - dy * Math.sin(angleRad),
+    cy + dx * Math.sin(angleRad) + dy * Math.cos(angleRad)
+  );
+}
+
+// Wind direction-arrow glyph. windDirection is degrees clockwise from
+// north (meteorological convention); DrawContext has no path-rotate
+// transform, so each vertex is rotated by hand around the arrow's center
+// using the same (dir - 90) → radians conversion documented in src/chart.js
+// → drawWindIndicators(), so it points the same way the web chart does.
+function drawWindArrow(draw, cx, cy, dirDeg, size) {
+  const angle = ((dirDeg - 90) * Math.PI) / 180;
+  const tail = rotatePoint(cx - size, cy, cx, cy, angle);
+  const head = rotatePoint(cx + size, cy, cx, cy, angle);
+  const wing1 = rotatePoint(cx + size * 0.35, cy - size * 0.55, cx, cy, angle);
+  const wing2 = rotatePoint(cx + size * 0.35, cy + size * 0.55, cx, cy, angle);
+
+  draw.setStrokeColor(new Color(COLORS.wind));
+  draw.setLineWidth(1.4);
+
+  const shaft = new Path();
+  shaft.move(tail);
+  shaft.addLine(head);
+  draw.addPath(shaft);
+  draw.strokePath();
+
+  const arrowhead = new Path();
+  arrowhead.move(wing1);
+  arrowhead.addLine(head);
+  arrowhead.addLine(wing2);
+  draw.addPath(arrowhead);
+  draw.strokePath();
+}
+
+// Translucent background patch behind a text label, so it stays legible
+// wherever the wind line (or cloud shading) happens to cross behind it.
+// Used for the daily-hi label only — it sits inside the busiest part of
+// the chart, near the wind line's peaks; the lo label sits low in the
+// zone where the wind line rarely crosses, so it reads fine without one
+// (and without the halo's slightly "tagged" look). Known simplification:
+// this uses a fixed light-mode color, so it
+// won't blend into a dark-mode background as cleanly as the widget chrome
+// around it does (that chrome uses Color.dynamic; DrawContext output can't
+// — see the module comment on renderMeteogramImage for why).
+function drawLabelHalo(draw, rect) {
+  const haloPath = new Path();
+  haloPath.addRect(rect);
+  draw.setFillColor(new Color(COLORS.bgLight, 0.72));
+  draw.addPath(haloPath);
+  draw.fillPath();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5-day chart, curated rather than literal: cramming Temp + Wind + Cloud +
+// Rain + UV as five independent zones across 120 hourly points would be
+// illegible at ~300×180px. So the chart carries what reads at a glance —
+// temp curve (with each day's hi/lo plotted right on the curve, like the
+// WeatherGraph reference), wind sharing that same zone as a dashed,
+// auto-scaled dual-axis overlay (own min/max, same pixel range as temp —
+// see the minW/maxW comment below), cloud as background shading, and rain
+// bars — and only UV drops off the chart entirely, surfacing instead as a
+// per-day badge below (see buildLargeWidget); one peak-UV number per day
+// carries as much useful info as a full line would (UV only matters near
+// its daily peak) without adding a fourth zone.
+// ─────────────────────────────────────────────────────────────────────────
+function renderMeteogramImage(hourly, daily, width, height) {
   const draw = new DrawContext();
   draw.size = new Size(width, height);
   draw.opaque = false;
   draw.respectScreenScale = true;
 
   const n = hourly.length;
+  const hoursPerDay = 24;
+  const days = Math.min(daily.length, Math.round(n / hoursPerDay));
   const xAt = (i) => (i / (n - 1)) * width;
 
-  const allTemps = hourly.map((h) => h.temperature).concat(hourly.map((h) => h.temperatureFeelsLike));
-  const minT = Math.min(...allTemps) - 1;
-  const maxT = Math.max(...allTemps) + 1;
+  const temps = hourly.map((h) => h.temperature);
+  const minT = Math.min(...temps) - 2;
+  const maxT = Math.max(...temps) + 4; // headroom for the hi° labels above the peak
 
-  // Zones, echoing chart.js's ZONE split (temp zone on top, precip strip
-  // below, axis labels at the very bottom) but compressed for widget size.
-  const axisH = 14;
-  const precipH = height * 0.2;
-  const tempTop = 2;
-  const tempBot = height - axisH - precipH - 6;
+  // Zones: temp (which wind now shares — see below) on top, precip strip
+  // below, compressed for widget size. No separate hour/day axis row here
+  // — the day-strip drawn below this image (buildLargeWidget) already
+  // labels each day, so a second row of day names here would just repeat
+  // it for free height the curve/rain rows can use instead.
+  const precipH = height * 0.18;
+  const tempTop = 18; // headroom for hi° labels
+  const tempBot = height - precipH - 6;
   const precipTop = tempBot + 6;
-  const precipBot = height - axisH;
+  const precipBot = height;
+
+  // Wind shares the temp zone's own pixel range (tempTop–tempBot) rather
+  // than getting a separate strip — a fixed 0–90 km/h scale in a thin row
+  // left Christchurch's usual 10–25 km/h barely moving the line. Sharing
+  // the tall zone with its own auto-scaled min/max (like temp's) gives it
+  // real vertical resolution, and lines up each day's wind visually
+  // against that same day's temp — a proper dual-axis overlay, not two
+  // independent charts.
+  const smoothedWind = movingAverage(hourly.map((h) => h.windSpeed || 0), WIND_SMOOTH_WINDOW);
+  const minW = Math.max(0, Math.min(...smoothedWind) - 2);
+  const maxW = Math.max(...smoothedWind) + 2;
+
+  // Cloud-cover background shading (subtle, one thin column per hour) —
+  // the pale overlay bands in the web chart, simplified to flat opacity
+  // rather than a gradient (DrawContext has no path-gradient fill).
+  const cloudSegW = width / n + 0.6;
+  hourly.forEach((h, i) => {
+    const cloudPct = (h.cloudCover || 0) / 100;
+    if (cloudPct < 0.05) return;
+    const p = new Path();
+    p.addRect(new Rect(xAt(i) - cloudSegW / 2, tempTop, cloudSegW, tempBot - tempTop));
+    draw.setFillColor(new Color("#ffffff", cloudPct * 0.14));
+    draw.addPath(p);
+    draw.fillPath();
+  });
+
+  // Day-boundary separators
+  draw.setStrokeColor(new Color(COLORS.mutedLight, 0.25));
+  draw.setLineWidth(1);
+  for (let d = 1; d < days; d++) {
+    const x = xAt(d * hoursPerDay);
+    const sep = new Path();
+    sep.move(new Point(x, tempTop));
+    sep.addLine(new Point(x, precipBot));
+    draw.addPath(sep);
+    draw.strokePath();
+  }
 
   // Temperature area fill + curve
   const tempPts = hourly.map((h, i) => new Point(xAt(i), scaleY(h.temperature, minT, maxT, tempTop, tempBot)));
@@ -206,22 +335,73 @@ function renderMeteogramImage(hourly, width, height) {
   fillPath.addLine(new Point(width, tempBot));
   fillPath.addLine(new Point(0, tempBot));
   fillPath.closeSubpath();
-  draw.setFillColor(new Color(COLORS.tempLine, 0.22));
+  draw.setFillColor(new Color(COLORS.tempLine, 0.2));
   draw.addPath(fillPath);
   draw.fillPath();
 
   draw.setStrokeColor(new Color(COLORS.tempLine));
-  draw.setLineWidth(2.5);
+  draw.setLineWidth(2.2);
   draw.addPath(smoothPath(tempPts));
   draw.strokePath();
 
-  // Feels-like dashed line
-  const feelsPts = hourly.map((h, i) => new Point(xAt(i), scaleY(h.temperatureFeelsLike, minT, maxT, tempTop, tempBot)));
-  strokeDashedPolyline(draw, feelsPts, 5, 4, new Color("#5fd0e0"), 1.5);
+  // Wind — dashed line sharing the temp zone's pixel range but its own
+  // auto-scaled (minW–maxW) value axis, so it's a real dual-axis overlay:
+  // same vertical space as temp, different meaning per pixel. Dashed
+  // (rather than solid, like chart.js's separate wind row) so it doesn't
+  // read as a second temperature line where the two curves cross. Plotted
+  // from smoothedWind, not raw windSpeed — see movingAverage()'s comment.
+  // Drawn before the hi/lo labels so those stay legible on top if a
+  // crossing lands near one.
+  const windPts = smoothedWind.map((v, i) => new Point(xAt(i), scaleY(v, minW, maxW, tempTop, tempBot)));
+  strokeDashedPolyline(draw, windPts, 4, 3, new Color(COLORS.wind, 0.85), 1.6);
+
+  // One direction arrow per day — all 120 points would be far too dense,
+  // so arrows land on the same representative hour (early afternoon) the
+  // day-strip badges below use. Direction comes from the raw hour (a
+  // direction doesn't benefit from averaging the way a speed does), but
+  // the arrow's y-position uses the smoothed speed so it sits on the line.
+  for (let d = 0; d < days; d++) {
+    const idx = Math.min(d * hoursPerDay + 13, n - 1);
+    const h = hourly[idx];
+    const cx = xAt(idx);
+    const cy = scaleY(smoothedWind[idx], minW, maxW, tempTop, tempBot);
+    drawWindArrow(draw, cx, cy, h.windDirection || 0, 5);
+  }
+
+  // Per-day hi/lo, plotted directly on the curve at that day's peak/trough
+  // — uses the worker's daily[] max/min (source of truth) for the label
+  // text, but the hourly slice's peak/trough index for where to place it.
+  // Drawn last, each behind a small background halo, so the label stays
+  // readable wherever the wind line happens to cross near it.
+  draw.setTextAlignedCenter();
+  for (let d = 0; d < days; d++) {
+    const start = d * hoursPerDay;
+    const slice = hourly.slice(start, start + hoursPerDay);
+    let hiIdx = 0, loIdx = 0;
+    slice.forEach((h, i) => {
+      if (h.temperature > slice[hiIdx].temperature) hiIdx = i;
+      if (h.temperature < slice[loIdx].temperature) loIdx = i;
+    });
+
+    const hiX = xAt(start + hiIdx);
+    const hiY = scaleY(slice[hiIdx].temperature, minT, maxT, tempTop, tempBot);
+    const hiRect = new Rect(hiX - 16, hiY - 15, 32, 11);
+    drawLabelHalo(draw, hiRect);
+    draw.setFont(Font.boldSystemFont(9));
+    draw.setTextColor(new Color(COLORS.tempLine));
+    draw.drawTextInRect(`${Math.round(daily[d].temperatureMax)}°`, hiRect);
+
+    const loX = xAt(start + loIdx);
+    const loY = scaleY(slice[loIdx].temperature, minT, maxT, tempTop, tempBot);
+    const loRect = new Rect(loX - 16, loY + 4, 32, 11);
+    draw.setFont(Font.systemFont(8));
+    draw.setTextColor(new Color(COLORS.mutedLight));
+    draw.drawTextInRect(`${Math.round(daily[d].temperatureMin)}°`, loRect);
+  }
 
   // Precipitation-chance bars
-  const barW = Math.max(2, (width / n) * 0.5);
-  draw.setFillColor(new Color(COLORS.precip, 0.75));
+  const barW = Math.max(1, (width / n) * 0.6);
+  draw.setFillColor(new Color(COLORS.precip, 0.7));
   hourly.forEach((h, i) => {
     const pct = (h.precipChance || 0) / 100;
     const barH = pct * (precipBot - precipTop);
@@ -230,19 +410,6 @@ function renderMeteogramImage(hourly, width, height) {
     barPath.addRect(new Rect(xAt(i) - barW / 2, precipBot - barH, barW, barH));
     draw.addPath(barPath);
     draw.fillPath();
-  });
-
-  // Hour-of-day axis labels, every 4th point
-  draw.setFont(Font.systemFont(9));
-  draw.setTextColor(new Color(COLORS.mutedLight));
-  draw.setTextAlignedCenter();
-  hourly.forEach((h, i) => {
-    if (i % 4 !== 0) return;
-    const label = new Date(h.validTimeUtc * 1000)
-      .toLocaleString("en-NZ", { hour: "numeric", hour12: true, timeZone: "Pacific/Auckland" })
-      .replace(" ", "")
-      .toLowerCase();
-    draw.drawTextInRect(label, new Rect(xAt(i) - 18, height - axisH + 1, 36, axisH - 1));
   });
 
   return draw.getImage();
@@ -409,19 +576,62 @@ function buildLargeWidget(data) {
   cond.lineLimit = 1;
   cond.rightAlignText();
 
-  widget.addSpacer(8);
+  widget.addSpacer(6);
 
-  // Meteogram — next CHART_HOURS hours of temp/feels-like/precip chance.
+  // 5-day meteogram — temp curve + hi/lo + cloud shading + rain bars.
   const hourly = (data.hourly || []).slice(0, CHART_HOURS);
-  if (hourly.length >= 2) {
+  const daily = data.daily || [];
+  if (hourly.length >= 24 && daily.length) {
     const chartWidth = 300;
-    const chartHeight = 230;
-    const img = renderMeteogramImage(hourly, chartWidth, chartHeight);
+    const chartHeight = 168; // taller now the wind zone adds a third row
+    const img = renderMeteogramImage(hourly, daily, chartWidth, chartHeight);
     const chartStack = widget.addStack();
     chartStack.addSpacer();
     const imgEl = chartStack.addImage(img);
     imgEl.imageSize = new Size(chartWidth, chartHeight);
     chartStack.addSpacer();
+  }
+
+  widget.addSpacer(6);
+
+  // Per-day strip: icon + Wind/UV badges — the two series dropped from the
+  // chart itself (see renderMeteogramImage's comment) surface here instead,
+  // as one representative number per day rather than a plotted line.
+  if (daily.length && hourly.length) {
+    const stripRow = widget.addStack();
+    const dayCount = Math.min(daily.length, Math.floor(hourly.length / 24));
+    for (let d = 0; d < dayCount; d++) {
+      const start = d * 24;
+      const slice = hourly.slice(start, start + 24);
+      const repHour = slice[13] || slice[Math.floor(slice.length / 2)];
+      const maxWind = Math.round(Math.max(...slice.map((h) => h.windSpeed || 0)));
+      const maxUV = Math.round(Math.max(...slice.map((h) => h.uvIndex || 0)));
+      const { symbol: daySym, color: dayColor } = iconForCondition(repHour.iconCode);
+
+      const dayCol = stripRow.addStack();
+      dayCol.layoutVertically();
+      dayCol.centerAlignContent();
+
+      const dayLabel = dayCol.addText(
+        new Date(repHour.validTimeUtc * 1000)
+          .toLocaleString("en-NZ", { weekday: "short", timeZone: "Pacific/Auckland" })
+          .toUpperCase()
+      );
+      dayLabel.font = Font.mediumSystemFont(9);
+      dayLabel.textColor = mutedColor();
+
+      const sfi = SFSymbol.named(daySym);
+      sfi.applyFont(Font.systemFont(14));
+      const iconEl = dayCol.addImage(sfi.image);
+      iconEl.imageSize = new Size(16, 16);
+      iconEl.tintColor = new Color(dayColor);
+
+      const badge = dayCol.addText(`${maxWind}km · UV${maxUV}`);
+      badge.font = Font.systemFont(8);
+      badge.textColor = mutedColor();
+
+      if (d < dayCount - 1) stripRow.addSpacer();
+    }
   }
 
   widget.addSpacer();

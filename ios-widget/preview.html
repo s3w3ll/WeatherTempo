@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>WeatherTempo Widget Preview</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #20242c;
+    color: #e8edf5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  header {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px 20px;
+    background: #14171d;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #2c313a;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header label { font-size: 12px; color: #9aa5b8; display: flex; align-items: center; gap: 6px; }
+  header select, header button {
+    font: inherit;
+    font-size: 12px;
+    background: #262b34;
+    color: #e8edf5;
+    border: 1px solid #3a4150;
+    border-radius: 6px;
+    padding: 5px 8px;
+    cursor: pointer;
+  }
+  #status { font-size: 12px; color: #7fd6a0; margin-left: auto; }
+  #status.error { color: #ff9b8a; }
+  main {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+  #stage {
+    background: linear-gradient(160deg, #3a5a8a, #1c2a44);
+    border-radius: 28px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  #frame {
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    transition: width 0.15s ease, height 0.15s ease;
+  }
+  #note {
+    max-width: 620px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: #8fa3bf;
+    margin: 0 0 22px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>WeatherTempo Widget Preview</h1>
+  <label>Family
+    <select id="family">
+      <option value="small">Small</option>
+      <option value="medium">Medium</option>
+      <option value="large" selected>Large</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="theme" /> Dark mode</label>
+  <label><input type="checkbox" id="auto" checked /> Auto-reload</label>
+  <button id="reload">Reload now</button>
+  <span id="status">—</span>
+</header>
+<main>
+  <div>
+    <p id="note">
+      Renders <code>WeatherTempo.js</code> unmodified through a browser shim of the
+      Scriptable API — real device data, real colors, approximate layout. SF Symbol
+      icons are stand-in shapes (not Apple's actual glyphs); everything else
+      (temps, curve, precip bars, fonts/sizes) matches the real script's logic.
+      Edit the file and save — this polls for changes every 1.5s.
+    </p>
+    <div id="stage"><div id="frame"></div></div>
+  </div>
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// Minimal Scriptable API shim — just enough surface for WeatherTempo.js.
+// Not a general-purpose Scriptable polyfill; extend as the script grows.
+// ═══════════════════════════════════════════════════════════════════════
+
+const SCALE = 2; // pt → px, for a legible browser view
+const IMG_SCALE = 2; // extra resolution for the offscreen chart canvas
+const FRAME_SIZES = { small: [155, 155], medium: [329, 155], large: [329, 345] };
+const px = (pt) => (pt * SCALE) + "px";
+
+function hexToRgba(hex, alpha = 1) {
+  let h = String(hex).replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const r = parseInt(h.substring(0, 2), 16) || 0;
+  const g = parseInt(h.substring(2, 4), 16) || 0;
+  const b = parseInt(h.substring(4, 6), 16) || 0;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// --- Color -----------------------------------------------------------
+class SColor {
+  constructor(hex, alpha = 1) {
+    this.lightCss = hexToRgba(hex, alpha);
+    this.darkCss = this.lightCss;
+  }
+  toCss() { return window.__WT_THEME === "dark" ? this.darkCss : this.lightCss; }
+}
+SColor.dynamic = (light, dark) => {
+  const c = Object.create(SColor.prototype);
+  c.lightCss = light.lightCss || light;
+  c.darkCss = dark.darkCss || dark;
+  return c;
+};
+
+// --- Font --------------------------------------------------------------
+const SFont = {
+  systemFont: (size) => ({ size, weight: "400" }),
+  boldSystemFont: (size) => ({ size, weight: "700" }),
+  mediumSystemFont: (size) => ({ size, weight: "500" }),
+};
+
+// --- Geometry ------------------------------------------------------------
+class SPoint { constructor(x, y) { this.x = x; this.y = y; } }
+class SSize { constructor(width, height) { this.width = width; this.height = height; } }
+class SRect { constructor(x, y, width, height) { this.x = x; this.y = y; this.width = width; this.height = height; } }
+
+// --- Path ----------------------------------------------------------------
+class SPath {
+  constructor() { this.ops = []; }
+  move(p) { this.ops.push(["move", p]); }
+  addLine(p) { this.ops.push(["line", p]); }
+  addQuadCurve(p, cp) { this.ops.push(["quad", p, cp]); }
+  addRect(r) { this.ops.push(["rect", r]); }
+  closeSubpath() { this.ops.push(["close"]); }
+}
+
+// --- DrawContext (canvas-backed) -----------------------------------------
+class SDrawContext {
+  constructor() {
+    this._canvas = document.createElement("canvas");
+    this._ctx = this._canvas.getContext("2d");
+    this._fill = "black";
+    this._stroke = "black";
+    this._lineWidth = 1;
+    this._font = { size: 12, weight: "400" };
+    this._textColor = "black";
+    this._textAlign = "left";
+  }
+  set size(s) {
+    this._sizeVal = s;
+    this._canvas.width = s.width * IMG_SCALE;
+    this._canvas.height = s.height * IMG_SCALE;
+    this._ctx.scale(IMG_SCALE, IMG_SCALE);
+  }
+  get size() { return this._sizeVal; }
+  set opaque(_v) {}
+  set respectScreenScale(_v) {}
+  setFillColor(c) { this._fill = c.toCss ? c.toCss() : c; }
+  setStrokeColor(c) { this._stroke = c.toCss ? c.toCss() : c; }
+  setLineWidth(w) { this._lineWidth = w; }
+  setFont(f) { this._font = f; }
+  setTextColor(c) { this._textColor = c.toCss ? c.toCss() : c; }
+  setTextAlignedCenter() { this._textAlign = "center"; }
+  setTextAlignedLeft() { this._textAlign = "left"; }
+  setTextAlignedRight() { this._textAlign = "right"; }
+  addPath(path) { this._pending = path; }
+  _replay(path) {
+    const ctx = this._ctx;
+    ctx.beginPath();
+    for (const op of path.ops) {
+      if (op[0] === "move") ctx.moveTo(op[1].x, op[1].y);
+      else if (op[0] === "line") ctx.lineTo(op[1].x, op[1].y);
+      else if (op[0] === "quad") ctx.quadraticCurveTo(op[2].x, op[2].y, op[1].x, op[1].y);
+      else if (op[0] === "rect") ctx.rect(op[1].x, op[1].y, op[1].width, op[1].height);
+      else if (op[0] === "close") ctx.closePath();
+    }
+  }
+  fillPath() {
+    this._replay(this._pending);
+    this._ctx.fillStyle = this._fill;
+    this._ctx.fill();
+  }
+  strokePath() {
+    this._replay(this._pending);
+    this._ctx.strokeStyle = this._stroke;
+    this._ctx.lineWidth = this._lineWidth;
+    this._ctx.lineCap = "round";
+    this._ctx.lineJoin = "round";
+    this._ctx.stroke();
+  }
+  drawTextInRect(text, rect) {
+    const ctx = this._ctx;
+    ctx.font = `${this._font.weight} ${this._font.size}px -apple-system, system-ui, sans-serif`;
+    ctx.fillStyle = this._textColor;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = this._textAlign;
+    let x = rect.x;
+    if (this._textAlign === "center") x = rect.x + rect.width / 2;
+    else if (this._textAlign === "right") x = rect.x + rect.width;
+    ctx.fillText(text, x, rect.y + rect.height / 2);
+  }
+  getImage() {
+    return { dataURL: this._canvas.toDataURL("image/png"), width: this._sizeVal.width, height: this._sizeVal.height };
+  }
+}
+
+// --- SF Symbol stand-ins ---------------------------------------------------
+// Simplified geometric shapes, not Apple's real glyphs — see preview note.
+const CLOUD_PATH = "M6 18a4 4 0 0 1-.3-7.98A5.5 5.5 0 0 1 16.2 7.4 4.2 4.2 0 0 1 20 11.5 4 4 0 0 1 18.5 18H6Z";
+const ICONS = {
+  "sun.max.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4.5"/><line x1="12" y1="19.5" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4.5" y2="12"/><line x1="19.5" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="4.2" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.8" y2="19.8"/><line x1="4.2" y1="19.8" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.8" y2="4.2"/></g></svg>`,
+  "moon.stars.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14.5 3a8 8 0 1 0 6.4 12.9A9 9 0 0 1 14.5 3Z"/><circle cx="19" cy="5" r="1"/><circle cx="21.5" cy="9" r="0.7"/></svg>`,
+  "cloud.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/></svg>`,
+  "cloud.sun.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="7" r="3.2"/><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><line x1="8" y1="1.2" x2="8" y2="2.6"/><line x1="2.6" y1="7" x2="4" y2="7"/><line x1="3.4" y1="2.6" x2="4.4" y2="3.6"/></g><path d="M6 18a4 4 0 0 1-.3-7.9 5.3 5.3 0 0 1 9.9-2 4.1 4.1 0 0 1 3.4 6A4 4 0 0 1 17.5 18H6Z"/></svg>`,
+  "cloud.moon.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.5 2.6a4.5 4.5 0 0 0 3.6 7.2 5.3 5.3 0 0 0-1-.1 4.5 4.5 0 0 0-2.6 8.1H17.5a4 4 0 0 0 1.5-7.7 4.1 4.1 0 0 0-3.4-6 5.3 5.3 0 0 0-1.4.2A4.5 4.5 0 0 0 9.5 2.6Z"/></svg>`,
+  "cloud.fog.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/><g stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="3" y1="20" x2="21" y2="20"/><line x1="5" y1="22.5" x2="19" y2="22.5"/></g></svg>`,
+  "cloud.drizzle.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/><g stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="9" y1="20" x2="8" y2="22.5"/><line x1="13" y1="20" x2="12" y2="22.5"/><line x1="17" y1="20" x2="16" y2="22.5"/></g></svg>`,
+  "cloud.rain.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="19.5" x2="6.5" y2="23"/><line x1="13" y1="19.5" x2="11.5" y2="23"/><line x1="18" y1="19.5" x2="16.5" y2="23"/></g></svg>`,
+  "cloud.heavyrain.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="7" y1="19" x2="5" y2="23.5"/><line x1="11.5" y1="19" x2="9.5" y2="23.5"/><line x1="16" y1="19" x2="14" y2="23.5"/><line x1="20" y1="19" x2="18" y2="23.5"/></g></svg>`,
+  "cloud.snow.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/><g stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="8" y1="19.5" x2="8" y2="23"/><line x1="6.3" y1="20.2" x2="9.7" y2="22.3"/><line x1="9.7" y1="20.2" x2="6.3" y2="22.3"/><line x1="16" y1="19.5" x2="16" y2="23"/><line x1="14.3" y1="20.2" x2="17.7" y2="22.3"/><line x1="17.7" y1="20.2" x2="14.3" y2="22.3"/></g></svg>`,
+  "cloud.bolt.rain.fill": `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${CLOUD_PATH}"/><path d="M13 15l-3 5h2.2l-1.4 4 4.4-6h-2.4l1.6-3z"/><g stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="7" y1="19.5" x2="6" y2="22.5"/><line x1="18" y1="19.5" x2="17" y2="22.5"/></g></svg>`,
+};
+function renderSFSymbolIcon(name) {
+  const wrap = document.createElement("span");
+  wrap.style.display = "inline-flex";
+  wrap.style.alignItems = "center";
+  wrap.style.justifyContent = "center";
+  wrap.innerHTML = ICONS[name] || ICONS["cloud.fill"];
+  const svg = wrap.querySelector("svg");
+  if (svg) { svg.style.width = "100%"; svg.style.height = "100%"; }
+  return wrap;
+}
+const SFSymbol = { named: (name) => ({ _name: name, image: { isSFSymbolPlaceholder: true, symbolName: name }, applyFont() {} }) };
+
+// --- Widget layout (ListWidget / Stack / Text / Image) --------------------
+class SWidgetText {
+  constructor(text) {
+    this.el = document.createElement("div");
+    this.el.textContent = text;
+    this.el.style.whiteSpace = "pre-wrap";
+  }
+  set font(f) { this.el.style.fontSize = px(f.size); this.el.style.fontWeight = f.weight; }
+  set textColor(c) { this.el.style.color = c.toCss ? c.toCss() : c; }
+  set lineLimit(n) {
+    this.el.style.display = "-webkit-box";
+    this.el.style.webkitBoxOrient = "vertical";
+    this.el.style.webkitLineClamp = String(n);
+    this.el.style.overflow = "hidden";
+  }
+  leftAlignText() { this.el.style.textAlign = "left"; this.el.style.alignSelf = "flex-start"; }
+  centerAlignText() { this.el.style.textAlign = "center"; this.el.style.alignSelf = "center"; }
+  rightAlignText() { this.el.style.textAlign = "right"; this.el.style.alignSelf = "flex-end"; }
+}
+class SWidgetImage {
+  constructor(img) {
+    if (img && img.isSFSymbolPlaceholder) this.el = renderSFSymbolIcon(img.symbolName);
+    else if (img && img.dataURL) { this.el = document.createElement("img"); this.el.src = img.dataURL; }
+    else this.el = document.createElement("div");
+  }
+  set imageSize(s) { this.el.style.width = px(s.width); this.el.style.height = px(s.height); this.el.style.flexShrink = "0"; }
+  set tintColor(c) { this.el.style.color = c.toCss ? c.toCss() : c; }
+}
+class SContainer {
+  constructor(direction) {
+    this.el = document.createElement("div");
+    this.el.style.display = "flex";
+    this.el.style.flexDirection = direction;
+    this.el.style.boxSizing = "border-box";
+  }
+  addStack() { const c = new SContainer("row"); this.el.appendChild(c.el); return c; }
+  addText(str) { const t = new SWidgetText(str); this.el.appendChild(t.el); return t; }
+  addImage(img) { const i = new SWidgetImage(img); this.el.appendChild(i.el); return i; }
+  addSpacer(len) {
+    const s = document.createElement("div");
+    if (len == null) s.style.flexGrow = "1";
+    else {
+      const isRow = this.el.style.flexDirection !== "column";
+      if (isRow) s.style.width = px(len); else s.style.height = px(len);
+      s.style.flexShrink = "0";
+    }
+    this.el.appendChild(s);
+    return s;
+  }
+  centerAlignContent() { this.el.style.alignItems = "center"; }
+  layoutVertically() { this.el.style.flexDirection = "column"; }
+  set spacing(v) { this.el.style.gap = px(v); }
+}
+class SListWidget extends SContainer {
+  constructor() {
+    super("column");
+    this.el.style.width = "100%";
+    this.el.style.height = "100%";
+    this.el.style.overflow = "hidden";
+  }
+  set backgroundColor(c) { this.el.style.background = c.toCss ? c.toCss() : c; }
+  setPadding(t, l, b, r) { this.el.style.padding = `${px(t)} ${px(r)} ${px(b)} ${px(l)}`; }
+  set refreshAfterDate(_d) {}
+  async presentSmall() { mountWidget(this.el, "small"); }
+  async presentMedium() { mountWidget(this.el, "medium"); }
+  async presentLarge() { mountWidget(this.el, "large"); }
+}
+
+// --- Network ---------------------------------------------------------------
+class SRequest {
+  constructor(url) { this.url = url; this.timeoutInterval = 30; }
+  async loadJSON() {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), this.timeoutInterval * 1000);
+    try {
+      const res = await fetch(this.url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } finally { clearTimeout(t); }
+  }
+}
+
+// --- Frame mounting + Script/config globals --------------------------------
+const frameEl = document.getElementById("frame");
+function mountWidget(el, family) {
+  const [w, h] = FRAME_SIZES[family];
+  frameEl.style.width = px(w);
+  frameEl.style.height = px(h);
+  frameEl.innerHTML = "";
+  frameEl.appendChild(el);
+}
+
+Object.assign(window, {
+  Color: SColor, Font: SFont, Point: SPoint, Size: SSize, Rect: SRect,
+  Path: SPath, DrawContext: SDrawContext, SFSymbol, ListWidget: SListWidget,
+  Request: SRequest,
+  config: { runsInWidget: false, widgetFamily: "large" },
+  Script: { setWidget: (w) => mountWidget(w.el, window.config.widgetFamily), complete() {} },
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Load + auto-reload the real script
+// ═══════════════════════════════════════════════════════════════════════
+const familySelect = document.getElementById("family");
+const themeToggle = document.getElementById("theme");
+const autoToggle = document.getElementById("auto");
+const reloadBtn = document.getElementById("reload");
+const statusEl = document.getElementById("status");
+
+function setStatus(msg, isError) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("error", !!isError);
+}
+
+let lastCode = null;
+
+async function runCode(code) {
+  window.config.widgetFamily = familySelect.value;
+  window.__WT_THEME = themeToggle.checked ? "dark" : "light";
+  document.getElementById("stage").style.background = themeToggle.checked
+    ? "linear-gradient(160deg, #14161c, #05060a)"
+    : "linear-gradient(160deg, #3a5a8a, #1c2a44)";
+  const runner = new Function(`return (async () => {\n${code}\n})();`);
+  await runner();
+}
+
+async function loadAndRun(force) {
+  try {
+    const res = await fetch("./WeatherTempo.js?t=" + Date.now());
+    if (!res.ok) throw new Error(`Couldn't load WeatherTempo.js (HTTP ${res.status})`);
+    const code = await res.text();
+    if (!force && code === lastCode) return;
+    lastCode = code;
+    setStatus("Loading…");
+    await runCode(code);
+    setStatus("Updated " + new Date().toLocaleTimeString());
+  } catch (err) {
+    setStatus("Error: " + (err && err.message ? err.message : err), true);
+    console.error(err);
+  }
+}
+
+familySelect.addEventListener("change", () => loadAndRun(true));
+themeToggle.addEventListener("change", () => loadAndRun(true));
+reloadBtn.addEventListener("click", () => loadAndRun(true));
+
+let pollTimer = null;
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(() => loadAndRun(false), 1500);
+}
+function stopPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+autoToggle.addEventListener("change", () => (autoToggle.checked ? startPolling() : stopPolling()));
+
+loadAndRun(true);
+startPolling();
+</script>
+</body>
+</html>

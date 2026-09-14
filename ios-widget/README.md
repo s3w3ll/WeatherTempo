@@ -4,6 +4,27 @@ Home-screen widget for WeatherTempo, built with [Scriptable](https://scriptable.
 (free, no Xcode/Apple Developer account needed). Pulls live data from the
 same Cloudflare Worker the web dashboard uses.
 
+## Iterating without copy-pasting into Scriptable every time
+
+[`preview.html`](./preview.html) is a browser-based simulator — a shim
+implementing just enough of the Scriptable API (`ListWidget`, `DrawContext`,
+`Path`, `Color`, `Font`, `Request`, `SFSymbol`, …) to run
+[`WeatherTempo.js`](./WeatherTempo.js) **unmodified** in a normal browser tab.
+Real live worker data, real colors/fonts/layout — only the SF Symbol icons
+are simplified stand-in shapes (not Apple's actual glyphs), since those
+only render for real on-device.
+
+```bash
+python -m http.server 8080
+# then open http://localhost:8080/ios-widget/preview.html
+```
+
+It polls the file every 1.5s and re-renders automatically when it changes —
+edit `WeatherTempo.js`, save, watch the preview update. Switch widget
+family (small/medium/large) and light/dark mode from the toolbar. Once it
+looks right, paste the file into Scriptable per the steps below to confirm
+on-device (icons especially — the real SF Symbols will look sharper).
+
 ## Setup
 
 1. Install **Scriptable** from the App Store.
@@ -17,9 +38,8 @@ same Cloudflare Worker the web dashboard uses.
    add the widget to your home screen — step 4 — and see it there).
 4. Long-press your home screen → **+** (top left) → search **Scriptable** →
    drag on a **small**, **medium**, or **large** widget. Pick **large** for
-   the meteogram (temperature curve + precip bars) — small/medium show a
-   condensed current-conditions card instead, there isn't enough height in
-   those sizes for a readable chart.
+   the 5-day meteogram — small/medium show a condensed current-conditions
+   card instead, there isn't enough height in those sizes for a chart.
 5. Long-press the new widget → **Edit Widget** → set:
    - **Script**: `WeatherTempo`
    - **When Interacting**: `Run Script`
@@ -37,28 +57,49 @@ for a fresh read.
 
 ## The large-widget meteogram
 
-`renderMeteogramImage()` draws a simplified version of the web dashboard's
-`chart.js` meteogram (temperature curve + fill, dashed feels-like line,
-precip-chance bars, hour axis) into an offscreen `DrawContext`, since
-Scriptable's `ListWidget` layout system can only stack text/images/spacers
-— it can't draw curves or bars directly. The image is then dropped into the
-widget like any other image element.
+`renderMeteogramImage()` draws the 5-day chart into an offscreen
+`DrawContext`, since Scriptable's `ListWidget` layout system can only stack
+text/images/spacers — it can't draw curves or bars directly. The image is
+then dropped into the widget like any other image element.
 
-Deliberately left out for now, to keep the first pass simple — all good
-follow-ups if you want closer parity with the web chart:
-- Cloud-cover shading (the pale overlay bands in the web chart)
-- Wind-speed row + direction arrows
+**Why it's not a literal 5-series chart.** The web dashboard's `chart.js`
+plots temp/feels-like/wind/precip/pressure as separate zones over a much
+bigger canvas. A large widget's chart area is ~300×168px — five fully
+independent zones for Temp, Wind, Cloud, Rain, and UV in that space would
+be unreadable at a glance (which defeats the point of a widget). So it's:
+- **Temp** — the curve, with each day's hi/lo (from the worker's `daily[]`)
+  plotted right on the curve at that day's peak/trough, mirroring the
+  floating hi/lo labels in the WeatherGraph reference screenshot.
+- **Wind** — shares the temp zone rather than getting its own strip: a
+  dashed red line on its own auto-scaled min/max axis (same pixel range as
+  temp, different value-per-pixel — a proper dual-axis overlay), plus one
+  direction arrow per day at a representative hour (all 120 points would
+  be far too dense for arrows). Dashed so it doesn't read as a second temp
+  line where the two curves cross.
+- **Cloud** — flat-opacity background shading per hour (no gradient —
+  `DrawContext` has no path-gradient fill, unlike canvas in `chart.js`).
+- **Rain** — precip-chance bars in the strip below the curve.
+- **UV** — dropped from the chart entirely, surfaced instead as a per-day
+  badge (`14km · UV5`) in the strip under the chart — one peak-per-day
+  number rather than a full profile, since UV mainly matters near its
+  daily peak anyway.
+
+Other simplifications worth knowing about:
 - True Catmull-Rom smoothing (currently uses a cheaper midpoint-quadratic
-  approximation — visually close, not identical)
-- A second day of data (currently shows the next `CHART_HOURS` hours only)
+  approximation — visually close, not identical, to `chart.js`'s curve).
+- Wind's day-strip badge is the day's *max* speed; the on-chart line is the
+  hourly profile. UV is always the day's peak index, not a full profile.
+- No pressure line.
 
 ## Customizing
 
 - **Icon/color mapping** — `iconForCondition()` in `WeatherTempo.js` maps
   each `iconCode` to an SF Symbol + accent color (see the comment block
   above it for the full code reference if you want to adjust any).
-- **Chart span** — `CHART_HOURS` at the top of the script controls how many
-  hourly points the large widget's meteogram plots (16 by default).
+- **Chart span** — `CHART_DAYS` at the top of the script controls how many
+  days the large widget's meteogram plots (5 by default, matching what the
+  worker returns — going higher needs the worker's forecast range extended
+  too).
 - **Different location** — change `LOCATION_ID`/`LOCATION_LABEL` at the top
   of the script to any id from `workers/pws-proxy.js`'s `LOCATIONS` map
   (only `christchurch` gets live PWS current-conditions; everything else
