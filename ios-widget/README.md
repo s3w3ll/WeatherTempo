@@ -38,8 +38,10 @@ on-device (icons especially — the real SF Symbols will look sharper).
    add the widget to your home screen — step 4 — and see it there).
 4. Long-press your home screen → **+** (top left) → search **Scriptable** →
    drag on a **small**, **medium**, or **large** widget. Pick **large** for
-   the 5-day meteogram — small/medium show a condensed current-conditions
-   card instead, there isn't enough height in those sizes for a chart.
+   the two-panel meteogram (a like-for-like recreation of Apple Weather's
+   watch-app forecast screen) — small/medium show a condensed
+   current-conditions card instead, there isn't enough height in those
+   sizes for a chart.
 5. Long-press the new widget → **Edit Widget** → set:
    - **Script**: `WeatherTempo`
    - **When Interacting**: `Run Script`
@@ -57,49 +59,65 @@ for a fresh read.
 
 ## The large-widget meteogram
 
-`renderMeteogramImage()` draws the 5-day chart into an offscreen
-`DrawContext`, since Scriptable's `ListWidget` layout system can only stack
-text/images/spacers — it can't draw curves or bars directly. The image is
-then dropped into the widget like any other image element.
+`buildLargeWidget()` is a like-for-like recreation of an Apple Weather
+watch-app screenshot: a header (current temp/feels-like/icon + a condition
+summary), a precip-intensity status line with a short rail showing the next
+few hours' rain rate, then two stacked chart panels. Both panels are drawn
+by the same `renderChartPanel()` function into an offscreen `DrawContext`
+(Scriptable's `ListWidget` layout system can only stack text/images/spacers
+— it can't draw curves or bars directly) and dropped into the widget as
+images:
+- **Hourly panel** — the next ~36 hours, x-axis labeled with hour-of-day
+  numbers and a day-name chip at each midnight (`18 · FRI · 6 · 12 · 18 ·
+  SAT`, matching the reference).
+- **Daily panel** — every hour the worker returns (5 days), x-axis labeled
+  with one day name per day and that day's hi/lo plotted right on the curve
+  at its peak/trough.
 
-**Why it's not a literal 5-series chart.** The web dashboard's `chart.js`
-plots temp/feels-like/wind/precip/pressure as separate zones over a much
-bigger canvas. A large widget's chart area is ~300×168px — five fully
-independent zones for Temp, Wind, Cloud, Rain, and UV in that space would
-be unreadable at a glance (which defeats the point of a widget). So it's:
-- **Temp** — the curve, with each day's hi/lo (from the worker's `daily[]`)
-  plotted right on the curve at that day's peak/trough, mirroring the
-  floating hi/lo labels in the WeatherGraph reference screenshot.
-- **Wind** — shares the temp zone rather than getting its own strip: a
-  dashed red line on its own auto-scaled min/max axis (same pixel range as
-  temp, different value-per-pixel — a proper dual-axis overlay), plus one
-  direction arrow per day at a representative hour (all 120 points would
-  be far too dense for arrows). Dashed so it doesn't read as a second temp
-  line where the two curves cross.
-- **Cloud** — flat-opacity background shading per hour (no gradient —
-  `DrawContext` has no path-gradient fill, unlike canvas in `chart.js`).
-- **Rain** — precip-chance bars in the strip below the curve.
-- **UV** — dropped from the chart entirely, surfaced instead as a per-day
-  badge (`14km · UV5`) in the strip under the chart — one peak-per-day
-  number rather than a full profile, since UV mainly matters near its
-  daily peak anyway.
+Each panel draws, top to bottom: a white "cloud cover" wave
+(`drawCloudWave`, amplitude tracks hourly `cloudCover%`) + a raindrop row
+(`drawRaindrops`), a dotted cyan feels-like line, the solid temp curve with
+its fill, a dashed red wind line sharing the temp zone's pixel range on its
+own auto-scaled axis (plus one direction arrow per day), and blue
+precip-chance bars + green UV bars in the bottom strip.
 
-Other simplifications worth knowing about:
+**Why the panels render transparent.** The reference sits on one continuous
+blue gradient behind the header, status line, and both charts — not a dark
+card per chart. `buildLargeWidget()` sets that gradient as
+`widget.backgroundGradient` and every chart image is drawn with
+`draw.opaque = false`, so it shows through anywhere nothing is drawn. It
+also means the white cloud fill and yellow temp fill blend with that blue
+into the same olive-green the reference shows wherever they overlap — that
+falls out of ordinary alpha compositing, nothing is color-mixed by hand.
+
+Known simplifications, in order of how much they matter:
+- **The headline sentence** (`"0.9 mm/h light rain for 3 hours, then
+  moderate rain"`) is intentionally a stub — `describePrecipTrend()` in
+  `WeatherTempo.js` just returns `current.condition` until you write the
+  actual trend narrative. It's flagged as a TODO in-file because there's no
+  single correct phrasing (how far ahead to look, what counts as a trend
+  vs. noise) — see the comment above the function.
+- **5 days, not 7** — the reference's bottom panel spans a week; this one
+  spans 5 days because that's all Open-Meteo's free tier returns via this
+  worker (`forecast_days=5` in `workers/pws-proxy.js`). Extending the
+  worker's forecast range would extend this too.
+- **"17:05"-style minute precision** isn't real — the worker's hourly data
+  lands on the hour, so the status line always shows `:00`.
+- Cloud cover is a stylized crossing-wave motif, not literal cloud texture
+  (not practical in DrawContext's path API).
 - True Catmull-Rom smoothing (currently uses a cheaper midpoint-quadratic
   approximation — visually close, not identical, to `chart.js`'s curve).
-- Wind's day-strip badge is the day's *max* speed; the on-chart line is the
-  hourly profile. UV is always the day's peak index, not a full profile.
-- No pressure line.
+- No pressure line, no sunrise/sunset shading blocks on the daily panel.
 
 ## Customizing
 
 - **Icon/color mapping** — `iconForCondition()` in `WeatherTempo.js` maps
   each `iconCode` to an SF Symbol + accent color (see the comment block
   above it for the full code reference if you want to adjust any).
-- **Chart span** — `CHART_DAYS` at the top of the script controls how many
-  days the large widget's meteogram plots (5 by default, matching what the
-  worker returns — going higher needs the worker's forecast range extended
-  too).
+- **Chart span** — the daily panel always plots everything `data.hourly`
+  contains (5 days, matching what the worker returns — going higher needs
+  the worker's forecast range extended too). The hourly panel's span is the
+  `36` in `hourly.slice(0, 36)` inside `buildLargeWidget()`.
 - **Different location** — change `LOCATION_ID`/`LOCATION_LABEL` at the top
   of the script to any id from `workers/pws-proxy.js`'s `LOCATIONS` map
   (only `christchurch` gets live PWS current-conditions; everything else
