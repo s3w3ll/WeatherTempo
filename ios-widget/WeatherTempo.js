@@ -33,6 +33,7 @@ const WIND_SMOOTH_WINDOW = 5; // hours averaged per point on the wind line — w
 const COLORS = {
   bgLight: "#f5f8fc",
   bgDark: "#0e1420",
+  chartBg: "#1c2c4a",    // dark navy — the meteogram's own background (see renderMeteogramImage)
   tempLine: "#ea7c1c",   // orange — temperature
   wind: "#e5484d",       // red — wind, matches chart.js's wind-zone line color
   precip: "#2563d8",     // blue — precipitation
@@ -235,24 +236,6 @@ function drawWindArrow(draw, cx, cy, dirDeg, size) {
   draw.strokePath();
 }
 
-// Translucent background patch behind a text label, so it stays legible
-// wherever the wind line (or cloud shading) happens to cross behind it.
-// Used for the daily-hi label only — it sits inside the busiest part of
-// the chart, near the wind line's peaks; the lo label sits low in the
-// zone where the wind line rarely crosses, so it reads fine without one
-// (and without the halo's slightly "tagged" look). Known simplification:
-// this uses a fixed light-mode color, so it
-// won't blend into a dark-mode background as cleanly as the widget chrome
-// around it does (that chrome uses Color.dynamic; DrawContext output can't
-// — see the module comment on renderMeteogramImage for why).
-function drawLabelHalo(draw, rect) {
-  const haloPath = new Path();
-  haloPath.addRect(rect);
-  draw.setFillColor(new Color(COLORS.bgLight, 0.72));
-  draw.addPath(haloPath);
-  draw.fillPath();
-}
-
 // ─────────────────────────────────────────────────────────────────────────
 // 5-day chart, curated rather than literal: cramming Temp + Wind + Cloud +
 // Rain + UV as five independent zones across 120 hourly points would be
@@ -269,8 +252,22 @@ function drawLabelHalo(draw, rect) {
 function renderMeteogramImage(hourly, daily, width, height) {
   const draw = new DrawContext();
   draw.size = new Size(width, height);
-  draw.opaque = false;
+  draw.opaque = true;
   draw.respectScreenScale = true;
+
+  // Chart background: always a fixed dark navy (COLORS.chartBg — matches
+  // the WeatherGraph reference's own dark meteogram), regardless of the
+  // phone's system theme. A transparent image let dark mode's near-black
+  // widget background show through and crush contrast; a plain white fill
+  // fixed that but ran too bright/washed-out against a dark home screen.
+  // Every color drawn into this image is chosen for this backdrop — the
+  // header/day-strip above and below it still follow the phone's real
+  // theme via Color.dynamic, so only the chart itself has a fixed look.
+  const bgFill = new Path();
+  bgFill.addRect(new Rect(0, 0, width, height));
+  draw.setFillColor(new Color(COLORS.chartBg));
+  draw.addPath(bgFill);
+  draw.fillPath();
 
   const n = hourly.length;
   const hoursPerDay = 24;
@@ -318,7 +315,7 @@ function renderMeteogramImage(hourly, daily, width, height) {
   });
 
   // Day-boundary separators
-  draw.setStrokeColor(new Color(COLORS.mutedLight, 0.25));
+  draw.setStrokeColor(new Color(COLORS.mutedDark, 0.3));
   draw.setLineWidth(1);
   for (let d = 1; d < days; d++) {
     const x = xAt(d * hoursPerDay);
@@ -386,7 +383,6 @@ function renderMeteogramImage(hourly, daily, width, height) {
     const hiX = xAt(start + hiIdx);
     const hiY = scaleY(slice[hiIdx].temperature, minT, maxT, tempTop, tempBot);
     const hiRect = new Rect(hiX - 16, hiY - 15, 32, 11);
-    drawLabelHalo(draw, hiRect);
     draw.setFont(Font.boldSystemFont(9));
     draw.setTextColor(new Color(COLORS.tempLine));
     draw.drawTextInRect(`${Math.round(daily[d].temperatureMax)}°`, hiRect);
@@ -395,7 +391,7 @@ function renderMeteogramImage(hourly, daily, width, height) {
     const loY = scaleY(slice[loIdx].temperature, minT, maxT, tempTop, tempBot);
     const loRect = new Rect(loX - 16, loY + 4, 32, 11);
     draw.setFont(Font.systemFont(8));
-    draw.setTextColor(new Color(COLORS.mutedLight));
+    draw.setTextColor(new Color(COLORS.mutedDark));
     draw.drawTextInRect(`${Math.round(daily[d].temperatureMin)}°`, loRect);
   }
 
