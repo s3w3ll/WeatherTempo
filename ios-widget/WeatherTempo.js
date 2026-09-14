@@ -533,7 +533,10 @@ function buildMediumWidget(data) {
 function buildLargeWidget(data) {
   const widget = new ListWidget();
   addBackground(widget);
-  widget.setPadding(14, 16, 10, 16);
+  // Tighter margins than the other sizes — the WeatherGraph reference runs
+  // its chart almost edge-to-edge, and every point of padding here is a
+  // point the meteogram below doesn't get.
+  widget.setPadding(10, 10, 8, 10);
 
   const c = data.current;
   const { symbol, color } = iconForCondition(c.iconCode);
@@ -572,14 +575,17 @@ function buildLargeWidget(data) {
   cond.lineLimit = 1;
   cond.rightAlignText();
 
-  widget.addSpacer(6);
+  widget.addSpacer(4);
 
   // 5-day meteogram — temp curve + hi/lo + cloud shading + rain bars.
+  // Sized to fill essentially all the width/height the tighter padding
+  // above frees up, so the chart — not the chrome around it — dominates
+  // the widget, matching the reference screenshot's proportions.
   const hourly = (data.hourly || []).slice(0, CHART_HOURS);
   const daily = data.daily || [];
   if (hourly.length >= 24 && daily.length) {
-    const chartWidth = 300;
-    const chartHeight = 168; // taller now the wind zone adds a third row
+    const chartWidth = 309;
+    const chartHeight = 206; // leaves a little clearance below the day-strip/footer — see buildLargeWidget's padding comment
     const img = renderMeteogramImage(hourly, daily, chartWidth, chartHeight);
     const chartStack = widget.addStack();
     chartStack.addSpacer();
@@ -588,7 +594,7 @@ function buildLargeWidget(data) {
     chartStack.addSpacer();
   }
 
-  widget.addSpacer(6);
+  widget.addSpacer(4);
 
   // Per-day strip: icon + Wind/UV badges — the two series dropped from the
   // chart itself (see renderMeteogramImage's comment) surface here instead,
