@@ -1386,7 +1386,10 @@
       // Update UI based on result
       if (result.source === 'worker') {
         const status = result.data.meta?.sourceStatus;
-        if (status?.pws === 'failed') {
+        // pws is a reason string (ok / no-observation / stale / http-4xx /
+        // bad-json / unreachable / n/a). The banner cares about one thing:
+        // a station exists for this location but did not supply the reading.
+        if (status?.pws && status.pws !== 'ok' && status.pws !== 'n/a') {
           updateStatusBanner("warning", "Live station unavailable — current conditions from forecast model");
         } else {
           updateStatusBanner("success", null);

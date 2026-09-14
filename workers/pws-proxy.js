@@ -129,6 +129,27 @@ function buildOMUrl(lat, lon) {
   );
 }
 
+// ── PWS observation freshness ─────────────────────────────────────────────────
+/**
+ * Decide whether a PWS observation is recent enough to prefer over the
+ * Open-Meteo model output for "current conditions".
+ *
+ * A station can stay online and keep serving its LAST reading long after it has
+ * stopped updating — a stuck 6-hour-old temperature looks live to the UI but is
+ * worse than the forecast model. Returning false here routes current conditions
+ * to Open-Meteo and surfaces pws:"stale" in meta.sourceStatus.
+ *
+ * @param {object} obs  observations[0] — has obs.obsTimeUtc (epoch SECONDS)
+ *                      and obs.obsTimeLocal (ISO-ish local string)
+ * @param {number} now  Date.now() in milliseconds
+ * @returns {boolean}   true → trust the PWS reading, false → fall back
+ */
+function isPwsObservationFresh(obs, now) {
+  // TODO(you): implement the staleness policy for ICHRIS810.
+  // Current behaviour trusts any observation the station returns.
+  return true;
+}
+
 // ── Worker entry ──────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -182,14 +203,46 @@ export default {
     }
     const om = await omResult.value.json();
 
-    // PWS optional even for CHC — gracefully degrade if station down
-    let pws = null;
-    if (pwsResult?.status === "fulfilled" && pwsResult.value.ok) {
-      pws = await pwsResult.value.json();
+    const now = Date.now();
+
+    // PWS optional even for CHC — gracefully degrade if station down.
+    //
+    // weather.com answers 204 No Content (empty body) when the station has no
+    // current observation. 204 satisfies Response.ok, so .json() must never be
+    // called blind here: JSON.parse("") throws and takes the whole Worker down,
+    // defeating the fallback this block exists to provide. Read as text, decide
+    // to parse.
+    let pws       = null;
+    let pwsStatus = loc.pwsStation ? "unreachable" : "n/a";
+
+    if (pwsResult?.status === "fulfilled") {
+      const res = pwsResult.value;
+      if (!res.ok) {
+        pwsStatus = `http-${res.status}`;
+      } else {
+        const body = (await res.text()).trim();
+        if (!body) {
+          pwsStatus = "no-observation";              // 204 / empty payload
+        } else {
+          try {
+            const parsed = JSON.parse(body);
+            const obs0   = parsed?.observations?.[0];
+            if (!obs0) {
+              pwsStatus = "no-observation";
+            } else if (!isPwsObservationFresh(obs0, now)) {
+              pwsStatus = "stale";
+            } else {
+              pws       = parsed;
+              pwsStatus = "ok";
+            }
+          } catch (_) {
+            pwsStatus = "bad-json";
+          }
+        }
+      }
     }
 
     // ── Build current conditions ──────────────────────────────────────────
-    const now     = Date.now();
     const omCur   = om.current || {};
     const omDaily = om.daily   || {};
     const omHrly  = om.hourly  || {};
@@ -318,7 +371,7 @@ export default {
         lon:      loc.lon,
         sourceStatus: {
           openMeteo:     "ok",
-          pws:           pws ? "ok" : (loc.pwsStation ? "failed" : "n/a"),
+          pws:           pwsStatus,
           currentSource: pws ? "pws" : "open-meteo",
         },
       },
