@@ -60,9 +60,10 @@ for a fresh read.
 ## The large-widget meteogram
 
 `buildLargeWidget()` is a like-for-like recreation of an Apple Weather
-watch-app screenshot: a header (current temp/feels-like/icon + a condition
-summary), a precip-intensity status line with a short rail showing the next
-few hours' rain rate, then two stacked chart panels. Both panels are drawn
+watch-app screenshot: a header (current temp/feels-like/icon, kept small,
+next to a 4-row Humidity/Pressure/UV/Wind stat column in the space that
+frees up), a precip-intensity status line with a short rail showing the
+next few hours' rain rate, then two stacked chart panels. Both panels are drawn
 by the same `renderChartPanel()` function into an offscreen `DrawContext`
 (Scriptable's `ListWidget` layout system can only stack text/images/spacers
 — it can't draw curves or bars directly) and dropped into the widget as
@@ -74,12 +75,15 @@ images:
   with one day name per day and that day's hi/lo plotted right on the curve
   at its peak/trough.
 
-Each panel draws, top to bottom: a white "cloud cover" wave
-(`drawCloudWave`, amplitude tracks hourly `cloudCover%`) + a raindrop row
-(`drawRaindrops`), a dotted cyan feels-like line, the solid temp curve with
-its fill, a dashed red wind line sharing the temp zone's pixel range on its
-own auto-scaled axis (plus one direction arrow per day), and blue
-precip-chance bars + green UV bars in the bottom strip.
+Each panel draws, back to front: a translucent dark band behind every
+night hour (`drawDayNightBands`, keyed off the worker's own `dayOrNight`
+flag — one merged rect per contiguous night run, not one per hour), a
+white "cloud cover" wave (`drawCloudWave`, amplitude tracks hourly
+`cloudCover%`) + a raindrop row (`drawRaindrops`), a dotted cyan feels-like
+line, the solid temp curve with its fill, a dashed red wind line sharing
+the temp zone's pixel range on its own auto-scaled axis (plus one
+direction arrow per day), and blue precip-chance bars + green UV bars in
+the bottom strip.
 
 **Why the panels render transparent.** The reference sits on one continuous
 blue gradient behind the header, status line, and both charts — not a dark
@@ -91,12 +95,13 @@ into the same olive-green the reference shows wherever they overlap — that
 falls out of ordinary alpha compositing, nothing is color-mixed by hand.
 
 Known simplifications, in order of how much they matter:
-- **The headline sentence** (`"0.9 mm/h light rain for 3 hours, then
-  moderate rain"`) is intentionally a stub — `describePrecipTrend()` in
-  `WeatherTempo.js` just returns `current.condition` until you write the
-  actual trend narrative. It's flagged as a TODO in-file because there's no
-  single correct phrasing (how far ahead to look, what counts as a trend
-  vs. noise) — see the comment above the function.
+- **No headline sentence** (the reference's `"0.9 mm/h light rain for 3
+  hours, then moderate rain"`) — an earlier pass had a stub
+  `describePrecipTrend()` for this, right-aligned opposite the temp block,
+  but it got removed to make room for the stat column instead, since it
+  was still just a TODO returning `current.condition`. The "Moderate rain
+  at…" status line below the header still carries the near-term precip
+  story; a headline sentence could come back elsewhere if it's wanted.
 - **5 days, not 7** — the reference's bottom panel spans a week; this one
   spans 5 days because that's all Open-Meteo's free tier returns via this
   worker (`forecast_days=5` in `workers/pws-proxy.js`). Extending the

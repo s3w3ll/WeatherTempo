@@ -228,32 +228,32 @@ function rotatePoint(px, py, cx, cy, angleRad) {
   );
 }
 
-// Wind direction-arrow glyph. windDirection is degrees clockwise from
-// north (meteorological convention); DrawContext has no path-rotate
-// transform, so each vertex is rotated by hand around the arrow's center
-// using the same (dir - 90) → radians conversion documented in src/chart.js
-// → drawWindIndicators(), so it points the same way the web chart does.
+// Wind direction chevron. windDirection is degrees clockwise from north
+// (meteorological convention); DrawContext has no path-rotate transform,
+// so each vertex is rotated by hand around the marker's center using the
+// same (dir - 90) → radians conversion documented in src/chart.js →
+// drawWindIndicators(), so it points the same way the web chart does.
+//
+// Earlier version also drew a shaft from tail to head — at chevron spacing
+// of every 3-6 hours that shaft's own length ran right into the dashed
+// wind line's own dashes sitting on the same point, reading as a stray
+// long stroke rather than a direction marker. The reference just uses a
+// small ">"-shaped chevron with no shaft, so this does too: a tip plus two
+// wings behind it, nothing extending forward past the tip.
 function drawWindArrow(draw, cx, cy, dirDeg, size) {
   const angle = ((dirDeg - 90) * Math.PI) / 180;
-  const tail = rotatePoint(cx - size, cy, cx, cy, angle);
-  const head = rotatePoint(cx + size, cy, cx, cy, angle);
-  const wing1 = rotatePoint(cx + size * 0.35, cy - size * 0.55, cx, cy, angle);
-  const wing2 = rotatePoint(cx + size * 0.35, cy + size * 0.55, cx, cy, angle);
+  const tip = rotatePoint(cx + size * 0.6, cy, cx, cy, angle);
+  const wing1 = rotatePoint(cx - size * 0.4, cy - size * 0.5, cx, cy, angle);
+  const wing2 = rotatePoint(cx - size * 0.4, cy + size * 0.5, cx, cy, angle);
 
   draw.setStrokeColor(new Color(COLORS.wind));
   draw.setLineWidth(1.4);
 
-  const shaft = new Path();
-  shaft.move(tail);
-  shaft.addLine(head);
-  draw.addPath(shaft);
-  draw.strokePath();
-
-  const arrowhead = new Path();
-  arrowhead.move(wing1);
-  arrowhead.addLine(head);
-  arrowhead.addLine(wing2);
-  draw.addPath(arrowhead);
+  const chevron = new Path();
+  chevron.move(wing1);
+  chevron.addLine(tip);
+  chevron.addLine(wing2);
+  draw.addPath(chevron);
   draw.strokePath();
 }
 
@@ -290,16 +290,17 @@ function renderChartPanel(hourly, opts) {
   const xAt = (i) => (i / (n - 1)) * width;
   const hoursPerDay = 24;
 
-  // Row layout, top to bottom: cloud wave, raindrops, temp/wind zone,
-  // precip+UV bars, axis labels.
+  // Row layout, top to bottom: cloud wave, raindrops, ONE shared plot zone
+  // (temp/feels/wind curves AND precip/UV bars, all in the same pixel
+  // range — see the bars section below), axis labels. Earlier versions
+  // gave precip/UV their own walled-off strip under the curves, which read
+  // as two stacked charts; the reference draws bars rising from the same
+  // baseline the curves sit on, so this does too.
   const cloudTop = 2, cloudBot = 20;
   const dropY = cloudBot + 8;
-  const tempTop = dropY + 10;
+  const plotTop = dropY + 14; // extra headroom over the old tempTop for the hourly-mode value labels added below
   const axisH = 14;
-  const precipH = Math.max(20, height * 0.16);
-  const tempBot = height - precipH - axisH - 4;
-  const precipTop = tempBot + 4;
-  const precipBot = height - axisH;
+  const plotBot = height - axisH - 4;
   const axisY = height - axisH + 2;
 
   const temps = hourly.map((h) => h.temperature);
@@ -307,13 +308,19 @@ function renderChartPanel(hourly, opts) {
   const minT = Math.min(...temps, ...feels) - 2;
   const maxT = Math.max(...temps, ...feels) + 4; // headroom for hi° labels above the peak
 
+  // Night shading — drawn first so it sits behind the cloud band, curves,
+  // and bars. Uses the worker's own dayOrNight flag (from Open-Meteo's
+  // is_day per hour) rather than deriving sunrise/sunset here, so it's
+  // exact for whichever hour Open-Meteo already classified.
+  drawDayNightBands(draw, hourly, xAt, cloudTop, plotBot, width);
+
   drawCloudWave(draw, hourly, xAt, cloudTop, cloudBot - cloudTop);
   drawRaindrops(draw, hourly, xAt, dropY);
 
-  // Wind shares the temp zone's own pixel range rather than a separate
-  // strip — see the original design note this carries forward: a fixed
-  // 0–90 km/h scale barely moves for Christchurch's usual 10–25 km/h, so
-  // it gets its own auto-scaled min/max sharing the tall zone instead.
+  // Wind shares the same plot zone rather than getting its own strip — a
+  // fixed 0–90 km/h scale barely moves for Christchurch's usual 10–25
+  // km/h, so it gets its own auto-scaled min/max sharing the tall zone
+  // instead (a real dual-axis overlay: same pixels, different meaning).
   const smoothedWind = movingAverage(hourly.map((h) => h.windSpeed || 0), WIND_SMOOTH_WINDOW);
   const minW = Math.max(0, Math.min(...smoothedWind) - 2);
   const maxW = Math.max(...smoothedWind) + 2;
@@ -327,23 +334,51 @@ function renderChartPanel(hourly, opts) {
     if (idx >= n) break;
     const x = xAt(idx);
     const sep = new Path();
-    sep.move(new Point(x, tempTop));
-    sep.addLine(new Point(x, precipBot));
+    sep.move(new Point(x, plotTop));
+    sep.addLine(new Point(x, plotBot));
     draw.addPath(sep);
     draw.strokePath();
   }
 
-  // Feels-like — dotted cyan line, drawn first so the solid temp curve and
-  // its fill sit above it, matching the reference's layering.
-  const feelsPts = feels.map((v, i) => new Point(xAt(i), scaleY(v, minT, maxT, tempTop, tempBot)));
+  // Precipitation bars (blue) + UV bars (green) — drawn FIRST, anchored to
+  // the same plotBot baseline the curves sit on and capped at a fraction
+  // of the zone height, so they read as bars rising up into the shared
+  // chart rather than a separate strip. Drawn before the curves/fill so
+  // the temp line stays legible on top wherever a tall bar would otherwise
+  // cross it.
+  const barW = Math.max(1, (width / n) * 0.6);
+  const barZoneH = plotBot - plotTop;
+  hourly.forEach((h, i) => {
+    const pct = (h.precipChance || 0) / 100;
+    const barH = pct * barZoneH * 0.55; // capped short of the full zone so it doesn't compete with the curves for headroom
+    if (barH >= 1) {
+      const barPath = new Path();
+      barPath.addRect(new Rect(xAt(i) - barW / 2, plotBot - barH, barW, barH));
+      draw.setFillColor(new Color(COLORS.precip, 0.65));
+      draw.addPath(barPath);
+      draw.fillPath();
+    }
+    const uvH = Math.min(1, (h.uvIndex || 0) / 11) * barZoneH * 0.4; // UV 11 = WHO "extreme", so scale 0–11 not 0–100; capped shorter than rain so it reads as a secondary series
+    if (uvH >= 1) {
+      const uvPath = new Path();
+      uvPath.addRect(new Rect(xAt(i) - barW / 4, plotBot - uvH, barW / 2, uvH));
+      draw.setFillColor(new Color(COLORS.uv, 0.75));
+      draw.addPath(uvPath);
+      draw.fillPath();
+    }
+  });
+
+  // Feels-like — dotted cyan line, drawn before the solid temp curve and
+  // its fill so those sit above it, matching the reference's layering.
+  const feelsPts = feels.map((v, i) => new Point(xAt(i), scaleY(v, minT, maxT, plotTop, plotBot)));
   strokeDashedPolyline(draw, feelsPts, 1.6, 3.4, new Color(COLORS.skyCyan, 0.9), 1.6);
 
   // Temperature area fill + curve — translucent over the sky gradient
   // rather than a solid navy backdrop (see function comment).
-  const tempPts = hourly.map((h, i) => new Point(xAt(i), scaleY(h.temperature, minT, maxT, tempTop, tempBot)));
+  const tempPts = hourly.map((h, i) => new Point(xAt(i), scaleY(h.temperature, minT, maxT, plotTop, plotBot)));
   const fillPath = smoothPath(tempPts);
-  fillPath.addLine(new Point(width, tempBot));
-  fillPath.addLine(new Point(0, tempBot));
+  fillPath.addLine(new Point(width, plotBot));
+  fillPath.addLine(new Point(0, plotBot));
   fillPath.closeSubpath();
   draw.setFillColor(new Color(COLORS.tempLine, 0.35));
   draw.addPath(fillPath);
@@ -354,48 +389,49 @@ function renderChartPanel(hourly, opts) {
   draw.addPath(smoothPath(tempPts));
   draw.strokePath();
 
-  // Wind — dashed red line, own auto-scaled axis sharing the temp zone's
-  // pixel range (see minW/maxW above), plus one direction arrow per day at
-  // a representative early-afternoon hour (every hour would be too dense).
-  const windPts = smoothedWind.map((v, i) => new Point(xAt(i), scaleY(v, minW, maxW, tempTop, tempBot)));
-  strokeDashedPolyline(draw, windPts, 4, 3, new Color(COLORS.wind, 0.9), 1.6);
-  for (let d = 0; d * hoursPerDay < n; d++) {
-    const idx = Math.min(d * hoursPerDay + 13, n - 1);
+  // Wind — dashed red line, own auto-scaled axis sharing the plot zone's
+  // pixel range (see minW/maxW above), plus a direction chevron every few
+  // hours (every hour would be too dense to read as individual chevrons).
+  // The daily panel spans 5x the width of the hourly one for the same
+  // image width, so its chevrons can space out further (6h) than the
+  // hourly panel's (3h) without looking sparse.
+  const windArrowStep = mode === "daily" ? 6 : 3;
+  const arrowIdxs = [];
+  for (let idx = 0; idx < n; idx += windArrowStep) arrowIdxs.push(idx);
+  const windPts = smoothedWind.map((v, i) => new Point(xAt(i), scaleY(v, minW, maxW, plotTop, plotBot)));
+
+  // Drawn in pieces — one per gap between chevrons — rather than one
+  // dashed stroke across the whole width. A single stroke's dash phase is
+  // whatever the running dash/gap math happens to land on at each
+  // chevron's x position, so a dash could still fall right under a
+  // chevron by chance (worse on the daily panel: it packs 5x the hours
+  // into the same pixel width, so there's far less room per chevron for
+  // the phase to miss). Cutting the line with a small cleared margin
+  // (clearPx) on each side of every chevron, and letting each piece start
+  // its own fresh dash phase, guarantees that clearance instead of hoping.
+  const clearPx = 4;
+  let cursorX = 0;
+  arrowIdxs.forEach((idx) => {
+    const arrowX = xAt(idx);
+    const segPts = windPts.filter((p) => p.x >= cursorX && p.x <= arrowX - clearPx);
+    if (segPts.length >= 2) strokeDashedPolyline(draw, segPts, 3, 6, new Color(COLORS.wind, 0.9), 1.6);
+    cursorX = arrowX + clearPx;
+  });
+  const tailPts = windPts.filter((p) => p.x >= cursorX);
+  if (tailPts.length >= 2) strokeDashedPolyline(draw, tailPts, 3, 6, new Color(COLORS.wind, 0.9), 1.6);
+
+  arrowIdxs.forEach((idx) => {
     const h = hourly[idx];
     const cx = xAt(idx);
-    const cy = scaleY(smoothedWind[idx], minW, maxW, tempTop, tempBot);
+    const cy = scaleY(smoothedWind[idx], minW, maxW, plotTop, plotBot);
     drawWindArrow(draw, cx, cy, h.windDirection || 0, 5);
-  }
-
-  // Precipitation bars (blue) + UV bars (green), side by side per hour —
-  // the old renderer dropped UV to a per-day badge below the chart; the
-  // reference draws it right in the strip, so it does here too.
-  const barW = Math.max(1, (width / n) * 0.6);
-  hourly.forEach((h, i) => {
-    const pct = (h.precipChance || 0) / 100;
-    const barH = pct * (precipBot - precipTop);
-    if (barH >= 1) {
-      const barPath = new Path();
-      barPath.addRect(new Rect(xAt(i) - barW / 2, precipBot - barH, barW, barH));
-      draw.setFillColor(new Color(COLORS.precip, 0.75));
-      draw.addPath(barPath);
-      draw.fillPath();
-    }
-    const uvH = Math.min(1, (h.uvIndex || 0) / 11) * (precipBot - precipTop) * 0.7; // UV 11 = WHO "extreme", so scale 0–11 not 0–100
-    if (uvH >= 1) {
-      const uvPath = new Path();
-      uvPath.addRect(new Rect(xAt(i) - barW / 4, precipBot - uvH, barW / 2, uvH));
-      draw.setFillColor(new Color(COLORS.uv, 0.85));
-      draw.addPath(uvPath);
-      draw.fillPath();
-    }
   });
 
   if (mode === "daily") {
-    // Per-day hi/lo plotted directly on the curve's peak/trough, and a day
-    // name centered under each day — uses daily[]'s max/min as the source
-    // of truth for the label text, the hourly slice only to find where to
-    // place it.
+    // Per-day hi/lo plotted directly on the curve's peak/trough, and a
+    // pill-chip day name centered under each day (same chip style the
+    // hourly axis uses for its day boundary, for legibility against the
+    // busier shared plot zone — plain muted text there was hard to spot).
     draw.setTextAlignedCenter();
     for (let d = 0; d < days; d++) {
       const start = d * hoursPerDay;
@@ -408,13 +444,13 @@ function renderChartPanel(hourly, opts) {
       });
 
       const hiX = xAt(start + hiIdx);
-      const hiY = scaleY(slice[hiIdx].temperature, minT, maxT, tempTop, tempBot);
+      const hiY = scaleY(slice[hiIdx].temperature, minT, maxT, plotTop, plotBot);
       draw.setFont(Font.boldSystemFont(9));
       draw.setTextColor(new Color(COLORS.skyText));
       draw.drawTextInRect(`${Math.round(daily[d].temperatureMax)}°`, new Rect(hiX - 16, hiY - 15, 32, 11));
 
       const loX = xAt(start + loIdx);
-      const loY = scaleY(slice[loIdx].temperature, minT, maxT, tempTop, tempBot);
+      const loY = scaleY(slice[loIdx].temperature, minT, maxT, plotTop, plotBot);
       draw.setFont(Font.systemFont(8));
       draw.setTextColor(new Color(COLORS.skyMuted));
       draw.drawTextInRect(`${Math.round(daily[d].temperatureMin)}°`, new Rect(loX - 16, loY + 4, 32, 11));
@@ -423,16 +459,63 @@ function renderChartPanel(hourly, opts) {
       const dayLabel = new Date(hourly[Math.min(start, n - 1)].validTimeUtc * 1000)
         .toLocaleString("en-NZ", { weekday: "short", timeZone: "Pacific/Auckland" })
         .toUpperCase();
-      draw.setFont(Font.mediumSystemFont(9));
-      draw.setTextColor(new Color(COLORS.skyMuted));
-      draw.drawTextInRect(dayLabel, new Rect(mid - 20, axisY, 40, axisH));
+      const chipW = 34;
+      const chip = new Path();
+      chip.addRoundedRect(new Rect(mid - chipW / 2, axisY - 1, chipW, axisH - 2), 4, 4);
+      draw.setFillColor(new Color("#ffffff", 0.16));
+      draw.addPath(chip);
+      draw.fillPath();
+      draw.setFont(Font.semiboldSystemFont(9));
+      draw.setTextColor(new Color(COLORS.skyText));
+      draw.drawTextInRect(dayLabel, new Rect(mid - chipW / 2, axisY, chipW, axisH));
     }
   } else {
+    // Per-day hi/lo — every day this panel touches gets its own high and
+    // low plotted on the curve, same as the daily panel below. Day
+    // boundaries here are found by scanning for real local midnights (same
+    // detection the hour axis loop below uses) rather than assumed at
+    // fixed 24-hour offsets from the panel's own start index — that keeps
+    // this correct whether or not this 36h slice happens to start exactly
+    // at midnight. Values are this SLICE's own max/min, not daily[]'s
+    // full-day figures: the panel can show only part of a day (its last
+    // day likely cuts off wherever the 36h window ends), and a full day's
+    // max/min could sit outside what's actually drawn here.
+    const dayBoundaries = [0];
+    for (let i = 1; i < n; i++) {
+      const localHour = +new Date(hourly[i].validTimeUtc * 1000)
+        .toLocaleString("en-NZ", { hour: "numeric", hour12: false, timeZone: "Pacific/Auckland" });
+      if (localHour === 0) dayBoundaries.push(i);
+    }
+    dayBoundaries.push(n);
+
+    draw.setTextAlignedCenter();
+    for (let d = 0; d < dayBoundaries.length - 1; d++) {
+      const start = dayBoundaries[d], end = dayBoundaries[d + 1];
+      const slice = hourly.slice(start, end);
+      if (slice.length < 2) continue; // sliver too small to label (e.g. panel ends an hour past midnight)
+      let hiIdx = 0, loIdx = 0;
+      slice.forEach((h, i) => {
+        if (h.temperature > slice[hiIdx].temperature) hiIdx = i;
+        if (h.temperature < slice[loIdx].temperature) loIdx = i;
+      });
+
+      const hiX = xAt(start + hiIdx);
+      const hiY = scaleY(slice[hiIdx].temperature, minT, maxT, plotTop, plotBot);
+      draw.setFont(Font.boldSystemFont(10));
+      draw.setTextColor(new Color(COLORS.skyText));
+      draw.drawTextInRect(`${Math.round(slice[hiIdx].temperature)}°`, new Rect(hiX - 16, hiY - 15, 32, 11));
+
+      const loX = xAt(start + loIdx);
+      const loY = scaleY(slice[loIdx].temperature, minT, maxT, plotTop, plotBot);
+      draw.setFont(Font.mediumSystemFont(9));
+      draw.setTextColor(new Color(COLORS.skyMuted));
+      draw.drawTextInRect(`${Math.round(slice[loIdx].temperature)}°`, new Rect(loX - 16, loY + 4, 32, 11));
+    }
+
     // Hour-of-day labels every 6 hours, with a day-name chip standing in
     // for "0" at each midnight — mirrors the reference's "18 FRI 6 12 18
     // SAT" axis exactly.
     draw.setFont(Font.mediumSystemFont(9));
-    draw.setTextAlignedCenter();
     for (let i = 0; i < n; i++) {
       const dt = new Date(hourly[i].validTimeUtc * 1000);
       const localHour = +dt.toLocaleString("en-NZ", { hour: "numeric", hour12: false, timeZone: "Pacific/Auckland" });
@@ -458,28 +541,83 @@ function renderChartPanel(hourly, opts) {
   return draw.getImage();
 }
 
-// White "cloud cover" wave — two crossing sine-ish strokes whose amplitude
-// tracks hourly cloudCover%, standing in for the reference's cloud-texture
-// band. A literal cloud-puff texture isn't practical in DrawContext's path
-// API, so this leans on the same crossing-lines motif the reference uses
-// rather than trying to render actual clouds.
+// Builds a closed ribbon between two same-length point arrays (their upper
+// and lower edges), each edge smoothed the same way smoothPath() softens a
+// single line — used by drawCloudWave to turn a top/bottom point pair into
+// one fillable band.
+function ribbonPath(topPts, botPts) {
+  const path = new Path();
+  path.move(topPts[0]);
+  for (let i = 1; i < topPts.length - 1; i++) {
+    const mid = new Point((topPts[i].x + topPts[i + 1].x) / 2, (topPts[i].y + topPts[i + 1].y) / 2);
+    path.addQuadCurve(mid, topPts[i]);
+  }
+  path.addLine(topPts[topPts.length - 1]);
+  path.addLine(botPts[botPts.length - 1]);
+  for (let i = botPts.length - 2; i > 0; i--) {
+    const mid = new Point((botPts[i].x + botPts[i - 1].x) / 2, (botPts[i].y + botPts[i - 1].y) / 2);
+    path.addQuadCurve(mid, botPts[i]);
+  }
+  path.addLine(botPts[0]);
+  path.closeSubpath();
+  return path;
+}
+
+// Shades contiguous night hours (hourly[i].dayOrNight === "N") as one
+// translucent dark band per run, from `top` to `bottom` across the full
+// vertical extent both panels share. Merges consecutive night hours into a
+// single rect rather than one per hour so there's no visible seam between
+// adjacent night columns, and extends the trailing run all the way to
+// `width` if the panel's data ends mid-night (nothing to close it against).
+function drawDayNightBands(draw, hourly, xAt, top, bottom, width) {
+  const n = hourly.length;
+  draw.setFillColor(new Color("#050a16", 0.24));
+  let i = 0;
+  while (i < n) {
+    if (hourly[i].dayOrNight !== "N") { i++; continue; }
+    let j = i;
+    while (j < n && hourly[j].dayOrNight === "N") j++;
+    const x0 = xAt(i);
+    const x1 = j < n ? xAt(j) : width;
+    const band = new Path();
+    band.addRect(new Rect(x0, top, Math.max(1, x1 - x0), bottom - top));
+    draw.addPath(band);
+    draw.fillPath();
+    i = j;
+  }
+}
+
+// White "cloud cover" band — its thickness at each hour tracks that hour's
+// actual cloudCover%, not an arbitrary repeating wave. The earlier version
+// used a fixed-period sine, so it "breathed" on its own rhythm regardless
+// of the data — clear hours and overcast hours looked the same, just
+// phase-shifted, which read as a meaningless squiggle rather than cloud.
+// This instead pinches to a thin sliver when clear and puffs out toward
+// rowH when overcast, smoothed across neighbors (movingAverage) so hour-
+// to-hour cloud noise doesn't make the edge jitter.
 function drawCloudWave(draw, hourly, xAt, top, rowH) {
   const n = hourly.length;
   const mid = top + rowH / 2;
-  const amp = rowH * 0.4;
-  const line1 = [], line2 = [];
+  const maxAmp = rowH * 0.46;
+  const minAmp = rowH * 0.08; // never fully collapses to a line, so it still reads as a band on clear stretches
+  const smoothedCloud = movingAverage(hourly.map((h) => h.cloudCover || 0), 3);
+
+  const topPts = [], botPts = [];
   for (let i = 0; i < n; i++) {
-    const cloud = (hourly[i].cloudCover || 0) / 100;
-    const a = amp * (0.2 + cloud * 0.8);
-    const phase = (i / 5) * Math.PI;
-    line1.push(new Point(xAt(i), mid - Math.sin(phase) * a));
-    line2.push(new Point(xAt(i), mid + Math.sin(phase + 0.7) * a));
+    const amp = minAmp + (smoothedCloud[i] / 100) * (maxAmp - minAmp);
+    topPts.push(new Point(xAt(i), mid - amp));
+    botPts.push(new Point(xAt(i), mid + amp));
   }
-  draw.setStrokeColor(new Color("#ffffff", 0.8));
-  draw.setLineWidth(1.5);
-  draw.addPath(smoothPath(line1));
+
+  draw.setFillColor(new Color("#ffffff", 0.22));
+  draw.addPath(ribbonPath(topPts, botPts));
+  draw.fillPath();
+
+  draw.setStrokeColor(new Color("#ffffff", 0.75));
+  draw.setLineWidth(1.3);
+  draw.addPath(smoothPath(topPts));
   draw.strokePath();
-  draw.addPath(smoothPath(line2));
+  draw.addPath(smoothPath(botPts));
   draw.strokePath();
 }
 
@@ -517,24 +655,28 @@ function fmtHourMin(unixSec) {
   });
 }
 
-// Rounded intensity rail for the next few hours (renderPrecipStatusRow) —
-// a compressed version of the reference's "17 18 19" gradient bar. Segment
-// fills are plain rects rather than clipped to the track's rounded corners
-// (DrawContext has no clip-path call), so the very first/last segment can
-// show square corners under the rounded track outline at small sizes —
-// acceptable at this scale, not worth a manual corner mask.
-function renderPrecipBar(hourly, width, height) {
+// Rounded intensity rail — a compressed version of the reference's "17 18
+// 19" gradient bar. `startIdx` is the hourly index the rail should OPEN
+// on: the caller passes the actual rain event's index (not always 0) so
+// the window this draws always contains the event the status line next to
+// it names. Slicing from a fixed hourly.slice(0, 9) — the first version —
+// meant the bar showed "now through +9h" regardless of when the rain
+// actually started; if the event was further out than that, the rail
+// could end up showing a run of empty hours with the event past its right
+// edge, or past its full window entirely, both of which contradict the
+// "Moderate rain at HH:00" text right next to it.
+function renderPrecipBar(hourly, startIdx, width, height) {
   const draw = new DrawContext();
   draw.size = new Size(width, height);
   draw.opaque = false;
   draw.respectScreenScale = true;
 
-  const hours = hourly.slice(0, 9);
+  const hours = hourly.slice(startIdx, startIdx + 9);
   const n = hours.length;
   if (!n) return draw.getImage();
 
-  const trackTop = height * 0.3;
-  const trackH = height * 0.4;
+  const trackTop = height * 0.08;
+  const trackH = height * 0.84;
   const track = new Path();
   track.addRoundedRect(new Rect(0, trackTop, width, trackH), trackH / 2, trackH / 2);
   draw.setFillColor(new Color("#ffffff", 0.14));
@@ -542,48 +684,33 @@ function renderPrecipBar(hourly, width, height) {
   draw.fillPath();
 
   const segW = width / n;
+  const gap = 1.5;
   hours.forEach((h, i) => {
     const { color } = precipIntensityLabel(h.qpf);
     if (!color) return;
     const seg = new Path();
-    seg.addRect(new Rect(i * segW, trackTop, segW + 0.5, trackH));
+    seg.addRoundedRect(new Rect(i * segW + gap / 2, trackTop, segW - gap, trackH), 3, 3);
     draw.setFillColor(new Color(color, 0.95));
     draw.addPath(seg);
     draw.fillPath();
   });
 
-  draw.setFont(Font.mediumSystemFont(10));
+  // Rect height is the label's own line height (not trackH) and its y is
+  // computed to sit centered in the track — drawTextInRect anchors to the
+  // rect's top, not its own vertical center, so a rect as tall as the
+  // whole track would push the text toward the top of it, not the middle.
+  draw.setFont(Font.semiboldSystemFont(7));
   draw.setTextColor(new Color(COLORS.skyText));
   draw.setTextAlignedCenter();
+  const labelH = 9;
+  const labelY = trackTop + trackH / 2 - labelH / 2;
   for (let i = 0; i < n; i += 3) {
     const hourLabel = new Date(hours[i].validTimeUtc * 1000)
       .toLocaleString("en-NZ", { hour: "numeric", hour12: false, timeZone: "Pacific/Auckland" });
-    draw.drawTextInRect(hourLabel, new Rect(i * segW, 0, segW, trackTop));
+    draw.drawTextInRect(hourLabel, new Rect(i * segW, labelY, segW, labelH));
   }
 
   return draw.getImage();
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// The one genuinely subjective piece of this whole recreation: turning the
-// next several hours of qpf/precipChance into a headline sentence like the
-// reference's "0.9 mm/h light rain for 3 hours, then moderate rain". There
-// isn't a single correct phrasing — how many hours ahead to look, when a
-// trend is worth calling out vs. just noise, whether to lead with the rate
-// or the duration — so this is deliberately left for you to write rather
-// than guessed at. `hourly` is the same array renderChartPanel gets (each
-// hour has .qpf mm/h, .precipChance %, .validTimeUtc unix seconds);
-// `current` is data.current (temp, feelsLike, condition, …).
-//
-// Until you fill this in, buildLargeWidget falls back to just showing
-// data.current.condition, so the widget still works either way.
-// ─────────────────────────────────────────────────────────────────────────
-function describePrecipTrend(hourly, current) {
-  // TODO(you): build the narrative sentence. `precipIntensityLabel(qpf)`
-  // above already classifies an hour's mm/h into light/moderate/heavy — you
-  // likely want to walk forward through `hourly`, find how long the
-  // current band holds, and note the next band it changes to.
-  return current.condition || "";
 }
 
 function buildSmallWidget(data) {
@@ -706,14 +833,15 @@ function buildMediumWidget(data) {
 }
 
 // Width the two chart images are drawn at. iOS large widgets vary by
-// device (roughly 329–364pt frame width; this widget pads 18pt each side —
-// see buildLargeWidget's setPadding), and Scriptable gives no API to ask a
-// widget its actual rendered size before drawing into it. So this targets
-// the smallest common frame (329pt, matching preview.html's "large" frame
-// and the original design's own assumption) rather than the largest —
-// undersizing wastes a little edge margin on bigger phones; oversizing
-// would clip the chart's right edge on smaller ones, which is worse.
-const LARGE_CONTENT_WIDTH = 293;
+// device (roughly 329–364pt frame width; this widget pads only 8pt each
+// side — see buildLargeWidget's setPadding, kept tight so the charts run
+// close to the widget's edge like the reference does), and Scriptable
+// gives no API to ask a widget its actual rendered size before drawing
+// into it. So this targets the smallest common frame (329pt, matching
+// preview.html's "large" frame) rather than the largest — undersizing
+// wastes a little edge margin on bigger phones; oversizing would clip the
+// chart's right edge on smaller ones, which is worse.
+const LARGE_CONTENT_WIDTH = 313;
 
 function buildLargeWidget(data) {
   const widget = new ListWidget();
@@ -727,74 +855,136 @@ function buildLargeWidget(data) {
   gradient.locations = [0, 0.55, 1];
   gradient.colors = [new Color(COLORS.skyTop), new Color(COLORS.skyMid), new Color(COLORS.skyBot)];
   widget.backgroundGradient = gradient;
-  widget.setPadding(14, 18, 8, 18);
+  widget.setPadding(14, 8, 8, 8);
 
   const c = data.current;
   const hourly = data.hourly || [];
   const daily = data.daily || [];
   const { symbol, color } = iconForCondition(c.iconCode);
 
-  // ── Header: big current temp + feels-like, icon, condition summary ─────
+  // ── Header: temp + icon + feels-like (small, left), stat grid (right) ──
+  // The temp block used to run the header's full width with the precip
+  // headline sentence right-aligned opposite it — shrunk down here to make
+  // room for a Wind/UV/Humidity/Pressure stat grid (same label/value
+  // pattern the medium widget's statLine() already uses), since those are
+  // concrete numbers every refresh has, where the headline sentence was
+  // still a stub (see the now-removed describePrecipTrend — dropped along
+  // with its call site rather than left orphaned; the "Moderate rain at…"
+  // status row below still carries the near-term precip story).
   const header = widget.addStack();
   header.centerAlignContent();
 
   const tempCol = header.addStack();
   tempCol.layoutVertically();
-  const tempText = tempCol.addText(fmtTemp(c.temp));
-  tempText.font = Font.boldSystemFont(40);
+  const tempRow = tempCol.addStack();
+  tempRow.centerAlignContent();
+  const tempText = tempRow.addText(fmtTemp(c.temp));
+  tempText.font = Font.boldSystemFont(28);
   tempText.textColor = new Color(COLORS.skyText);
+  tempRow.addSpacer(6);
+  const sfi = SFSymbol.named(symbol);
+  sfi.applyFont(Font.systemFont(20));
+  const iconEl = tempRow.addImage(sfi.image);
+  iconEl.imageSize = new Size(24, 24);
+  iconEl.tintColor = new Color(color);
   const feelsText = tempCol.addText(`FEELS LIKE ${fmtTemp(c.feelsLike)}`);
-  feelsText.font = Font.semiboldSystemFont(11);
+  feelsText.font = Font.semiboldSystemFont(10);
   feelsText.textColor = new Color(COLORS.skyMuted);
 
-  header.addSpacer(10);
-  const sfi = SFSymbol.named(symbol);
-  sfi.applyFont(Font.systemFont(30));
-  const iconEl = header.addImage(sfi.image);
-  iconEl.imageSize = new Size(36, 36);
-  iconEl.tintColor = new Color(color);
-
   header.addSpacer();
-  const summaryText = header.addText(describePrecipTrend(hourly, c));
-  summaryText.font = Font.systemFont(15);
-  summaryText.textColor = new Color(COLORS.skyText);
-  summaryText.rightAlignText();
-  summaryText.lineLimit = 2;
-  summaryText.minimumScaleFactor = 0.75;
 
-  widget.addSpacer(8);
+  // Two columns — Wind/UV on the left, Humidity/Pressure on the right —
+  // rather than one 4-row column, so Wind/UV visually sit to the left of
+  // Humidity/Pressure as asked, instead of just earlier in a single list.
+  const statGrid = header.addStack();
+  statGrid.spacing = 14;
+  const statColumn = (rows) => {
+    const col = statGrid.addStack();
+    col.layoutVertically();
+    col.spacing = 3;
+    rows.forEach(([label, value]) => {
+      const row = col.addStack();
+      row.centerAlignContent();
+      const l = row.addText(label);
+      l.font = Font.semiboldSystemFont(9);
+      l.textColor = new Color(COLORS.skyMuted);
+      row.addSpacer(8);
+      const v = row.addText(value);
+      v.font = Font.semiboldSystemFont(11);
+      v.textColor = new Color(COLORS.skyText);
+    });
+  };
+  statColumn([
+    ["WIND", c.windSpeed != null ? `${Math.round(c.windSpeed)} km/h` : "—"],
+    ["UV", c.uvIndex != null ? `${Math.round(c.uvIndex)}` : "—"],
+  ]);
+  statColumn([
+    ["HUMIDITY", c.humidity != null ? `${Math.round(c.humidity)}%` : "—"],
+    ["PRESSURE", c.pressure != null ? `${Math.round(c.pressure)} hPa` : "—"],
+  ]);
+
+  widget.addSpacer(6);
 
   // ── Precip status line + near-term intensity rail ──────────────────────
-  const nextRainHour = hourly.find((h) => (h.qpf || 0) > 0.1);
-  if (nextRainHour) {
+  // Only fires for rain forecast TODAY (local Pacific/Auckland calendar
+  // day) — hourly spans up to 5 days, and a rain hour 3 days out doesn't
+  // belong on a status line that reads like a right-now warning ("Moderate
+  // rain at 17:00"). Comparing the hour's own local date to today's,
+  // rather than just capping the search to the first N hours, means this
+  // still correctly finds nothing once today rolls into a dry tomorrow,
+  // even right before midnight.
+  const todayKey = new Date().toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
+  const rainIdx = hourly.findIndex((h) => {
+    if ((h.qpf || 0) <= 0.1) return false;
+    const hourKey = new Date(h.validTimeUtc * 1000).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" });
+    return hourKey === todayKey;
+  });
+  if (rainIdx !== -1) {
+    const nextRainHour = hourly[rainIdx];
     const statusRow = widget.addStack();
     statusRow.centerAlignContent();
     const { label } = precipIntensityLabel(nextRainHour.qpf);
     const statusText = statusRow.addText(`${label} at ${fmtHourMin(nextRainHour.validTimeUtc)}`);
-    statusText.font = Font.semiboldSystemFont(13);
+    statusText.font = Font.semiboldSystemFont(10);
     statusText.textColor = new Color(COLORS.skyCyan);
     statusText.lineLimit = 1;
     statusRow.addSpacer();
 
-    const barW = 130, barH = 22;
-    const barImg = renderPrecipBar(hourly, barW, barH);
+    // Rail opens on rainIdx — the same hour the status text names — so the
+    // window always contains the event instead of always showing "now
+    // through +9h" regardless of where the rain actually falls.
+    const barW = 130, barH = 15;
+    const barImg = renderPrecipBar(hourly, rainIdx, barW, barH);
     const barEl = statusRow.addImage(barImg);
     barEl.imageSize = new Size(barW, barH);
 
-    widget.addSpacer(8);
+    widget.addSpacer(6);
   }
 
   // ── Hourly panel: next ~36h, hour-of-day axis ───────────────────────────
   // 36h (not a full day) matches the reference's proportions — enough to
   // carry "this evening through tomorrow" without the curve compressing so
   // much per-hour detail disappears.
+  //
+  // Panel heights are still conservative, just less so than before: iOS's
+  // SMALLEST large-widget frame (iPhone SE, 329×345pt) has to fit header +
+  // status row + both panels + all the spacers between them with room to
+  // spare, because ListWidget clips silently rather than shrinking or
+  // scrolling — any overflow just gets cut from the bottom with no error.
+  // Shrinking the header down to a 2-row stat grid and the precip rail
+  // down to 15pt (see their own comments) freed up real slack in that
+  // budget, which goes here: the hourly panel gets 2x the daily panel's
+  // share of it (22pt vs 11pt over the old shared 100pt), since it carries
+  // more per-hour value labels and reads better with more vertical room,
+  // while the status row above keeps its own height untouched either way.
   const hourlyPanel = hourly.slice(0, 36);
-  const PANEL_HEIGHT = 116;
+  const HOURLY_PANEL_HEIGHT = 122;
+  const DAILY_PANEL_HEIGHT = 111;
   if (hourlyPanel.length >= 12) {
-    const img = renderChartPanel(hourlyPanel, { width: LARGE_CONTENT_WIDTH, height: PANEL_HEIGHT, mode: "hourly" });
+    const img = renderChartPanel(hourlyPanel, { width: LARGE_CONTENT_WIDTH, height: HOURLY_PANEL_HEIGHT, mode: "hourly" });
     const imgEl = widget.addImage(img);
-    imgEl.imageSize = new Size(LARGE_CONTENT_WIDTH, PANEL_HEIGHT);
-    widget.addSpacer(6);
+    imgEl.imageSize = new Size(LARGE_CONTENT_WIDTH, HOURLY_PANEL_HEIGHT);
+    widget.addSpacer(5);
   }
 
   // ── Multi-day panel: everything the worker returns (5 days), day axis ──
@@ -803,16 +993,10 @@ function buildLargeWidget(data) {
   // so this panel is 5 days wide rather than 7 — a data-availability limit,
   // not a design choice.
   if (hourly.length >= 24 && daily.length) {
-    const img = renderChartPanel(hourly, { width: LARGE_CONTENT_WIDTH, height: PANEL_HEIGHT, mode: "daily", daily });
+    const img = renderChartPanel(hourly, { width: LARGE_CONTENT_WIDTH, height: DAILY_PANEL_HEIGHT, mode: "daily", daily });
     const imgEl = widget.addImage(img);
-    imgEl.imageSize = new Size(LARGE_CONTENT_WIDTH, PANEL_HEIGHT);
+    imgEl.imageSize = new Size(LARGE_CONTENT_WIDTH, DAILY_PANEL_HEIGHT);
   }
-
-  widget.addSpacer();
-
-  const footer = widget.addText(`Updated ${fmtUpdatedAgo(data.meta.updated)}`);
-  footer.font = Font.systemFont(8);
-  footer.textColor = new Color(COLORS.skyMuted, 0.8);
 
   return widget;
 }
