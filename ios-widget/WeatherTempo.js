@@ -290,6 +290,24 @@ function renderChartPanel(hourly, opts) {
   const xAt = (i) => (i / (n - 1)) * width;
   const hoursPerDay = 24;
 
+  // Day boundaries — found by scanning for real local midnights, not
+  // assumed at fixed 24-hour offsets from index 0. Both panels now open on
+  // the current hour rather than midnight (see buildLargeWidget's nowIdx),
+  // so index 0 is partway through "today", not a day boundary itself —
+  // a fixed d*24 step would misplace every separator, day-chip, and
+  // per-day hi/lo group by however many hours it is past midnight right
+  // now. dayBoundaries[0] is always 0 and the last entry is always n, so
+  // segment d spans hourly.slice(dayBoundaries[d], dayBoundaries[d+1]) —
+  // segment 0 is the remainder of today, matching daily[0]; segment 1 is
+  // tomorrow, matching daily[1]; and so on.
+  const dayBoundaries = [0];
+  for (let i = 1; i < n; i++) {
+    const localHour = +new Date(hourly[i].validTimeUtc * 1000)
+      .toLocaleString("en-NZ", { hour: "numeric", hour12: false, timeZone: "Pacific/Auckland" });
+    if (localHour === 0) dayBoundaries.push(i);
+  }
+  dayBoundaries.push(n);
+
   // Row layout, top to bottom: cloud wave, raindrops, ONE shared plot zone
   // (temp/feels/wind curves AND precip/UV bars, all in the same pixel
   // range — see the bars section below), axis labels. Earlier versions
@@ -325,14 +343,13 @@ function renderChartPanel(hourly, opts) {
   const minW = Math.max(0, Math.min(...smoothedWind) - 2);
   const maxW = Math.max(...smoothedWind) + 2;
 
-  // Day-boundary separators
-  const days = mode === "daily" ? Math.min(daily.length, Math.round(n / hoursPerDay)) : Math.ceil(n / hoursPerDay);
+  // Day-boundary separators — one per interior dayBoundaries entry (the
+  // first and last entries are the panel's own edges, not real boundaries
+  // worth drawing a line at).
   draw.setStrokeColor(new Color("#ffffff", 0.14));
   draw.setLineWidth(1);
-  for (let d = 1; d < Math.ceil(n / hoursPerDay); d++) {
-    const idx = d * hoursPerDay;
-    if (idx >= n) break;
-    const x = xAt(idx);
+  for (let d = 1; d < dayBoundaries.length - 1; d++) {
+    const x = xAt(dayBoundaries[d]);
     const sep = new Path();
     sep.move(new Point(x, plotTop));
     sep.addLine(new Point(x, plotBot));
@@ -432,11 +449,20 @@ function renderChartPanel(hourly, opts) {
     // pill-chip day name centered under each day (same chip style the
     // hourly axis uses for its day boundary, for legibility against the
     // busier shared plot zone — plain muted text there was hard to spot).
+    //
+    // Label VALUES come from this segment's own local max/min, not
+    // daily[]'s full-day figures — segment 0 is only "now through
+    // midnight" (see dayBoundaries above), so daily[0]'s full-day max
+    // could be a hotter hour earlier today that isn't part of the visible
+    // curve at all, which would show a number the curve on screen never
+    // actually reaches. daily[] is only used to gate how many segments get
+    // labeled (real days the worker forecast for, not just data leftovers
+    // past the end of it).
     draw.setTextAlignedCenter();
-    for (let d = 0; d < days; d++) {
-      const start = d * hoursPerDay;
-      const slice = hourly.slice(start, start + hoursPerDay);
-      if (!slice.length || !daily[d]) continue;
+    for (let d = 0; d < dayBoundaries.length - 1 && d < daily.length; d++) {
+      const start = dayBoundaries[d], end = dayBoundaries[d + 1];
+      const slice = hourly.slice(start, end);
+      if (slice.length < 2) continue;
       let hiIdx = 0, loIdx = 0;
       slice.forEach((h, i) => {
         if (h.temperature > slice[hiIdx].temperature) hiIdx = i;
@@ -447,15 +473,15 @@ function renderChartPanel(hourly, opts) {
       const hiY = scaleY(slice[hiIdx].temperature, minT, maxT, plotTop, plotBot);
       draw.setFont(Font.boldSystemFont(9));
       draw.setTextColor(new Color(COLORS.skyText));
-      draw.drawTextInRect(`${Math.round(daily[d].temperatureMax)}°`, new Rect(hiX - 16, hiY - 15, 32, 11));
+      draw.drawTextInRect(`${Math.round(slice[hiIdx].temperature)}°`, new Rect(hiX - 16, hiY - 15, 32, 11));
 
       const loX = xAt(start + loIdx);
       const loY = scaleY(slice[loIdx].temperature, minT, maxT, plotTop, plotBot);
       draw.setFont(Font.systemFont(8));
       draw.setTextColor(new Color(COLORS.skyMuted));
-      draw.drawTextInRect(`${Math.round(daily[d].temperatureMin)}°`, new Rect(loX - 16, loY + 4, 32, 11));
+      draw.drawTextInRect(`${Math.round(slice[loIdx].temperature)}°`, new Rect(loX - 16, loY + 4, 32, 11));
 
-      const mid = xAt(Math.min(start + 12, n - 1));
+      const mid = xAt(Math.min(start + Math.floor((end - start) / 2), n - 1));
       const dayLabel = new Date(hourly[Math.min(start, n - 1)].validTimeUtc * 1000)
         .toLocaleString("en-NZ", { weekday: "short", timeZone: "Pacific/Auckland" })
         .toUpperCase();
@@ -471,23 +497,12 @@ function renderChartPanel(hourly, opts) {
     }
   } else {
     // Per-day hi/lo — every day this panel touches gets its own high and
-    // low plotted on the curve, same as the daily panel below. Day
-    // boundaries here are found by scanning for real local midnights (same
-    // detection the hour axis loop below uses) rather than assumed at
-    // fixed 24-hour offsets from the panel's own start index — that keeps
-    // this correct whether or not this 36h slice happens to start exactly
-    // at midnight. Values are this SLICE's own max/min, not daily[]'s
-    // full-day figures: the panel can show only part of a day (its last
-    // day likely cuts off wherever the 36h window ends), and a full day's
-    // max/min could sit outside what's actually drawn here.
-    const dayBoundaries = [0];
-    for (let i = 1; i < n; i++) {
-      const localHour = +new Date(hourly[i].validTimeUtc * 1000)
-        .toLocaleString("en-NZ", { hour: "numeric", hour12: false, timeZone: "Pacific/Auckland" });
-      if (localHour === 0) dayBoundaries.push(i);
-    }
-    dayBoundaries.push(n);
-
+    // low plotted on the curve, same as the daily panel below, using the
+    // shared dayBoundaries computed above. Values are this SLICE's own
+    // max/min, not daily[]'s full-day figures: the panel can show only
+    // part of a day (its last day likely cuts off wherever the 36h window
+    // ends), and a full day's max/min could sit outside what's actually
+    // drawn here.
     draw.setTextAlignedCenter();
     for (let d = 0; d < dayBoundaries.length - 1; d++) {
       const start = dayBoundaries[d], end = dayBoundaries[d + 1];
@@ -858,9 +873,21 @@ function buildLargeWidget(data) {
   widget.setPadding(14, 8, 8, 8);
 
   const c = data.current;
-  const hourly = data.hourly || [];
+  const rawHourly = data.hourly || [];
   const daily = data.daily || [];
   const { symbol, color } = iconForCondition(c.iconCode);
+
+  // Open-Meteo's hourly array starts at today's local midnight, not the
+  // current hour — so both chart panels and the rain-event search below
+  // need to open on "now" themselves, or they'd show however much of
+  // today has already elapsed as if it were still ahead. nowIdx is the
+  // first hour at/after now (a 30-min tolerance covers the just-turned
+  // hour, since validTimeUtc lands on the hour); everything downstream
+  // uses `hourly` (this trimmed view), not `rawHourly`.
+  const nowSec = Date.now() / 1000;
+  let nowIdx = rawHourly.findIndex((h) => h.validTimeUtc >= nowSec - 1800);
+  if (nowIdx === -1) nowIdx = 0;
+  const hourly = rawHourly.slice(nowIdx);
 
   // ── Header: temp + icon + feels-like (small, left), stat grid (right) ──
   // The temp block used to run the header's full width with the precip
@@ -980,10 +1007,26 @@ function buildLargeWidget(data) {
   const hourlyPanel = hourly.slice(0, 36);
   const HOURLY_PANEL_HEIGHT = 122;
   const DAILY_PANEL_HEIGHT = 111;
+
+  // Each panel sits in its own horizontal stack with a flexible spacer on
+  // both sides, rather than being addImage()'d straight onto the widget's
+  // own vertical stack. LARGE_CONTENT_WIDTH targets the SMALLEST large-
+  // widget frame (see its own comment) so the image is narrower than the
+  // available width on bigger phones — without the spacers, ListWidget
+  // left-aligns that leftover space instead of splitting it evenly, which
+  // is what made the charts look left-adjusted on an actual device rather
+  // than centered/full-bleed like the reference.
+  const centeredImage = (img, size) => {
+    const row = widget.addStack();
+    row.addSpacer();
+    const imgEl = row.addImage(img);
+    imgEl.imageSize = size;
+    row.addSpacer();
+  };
+
   if (hourlyPanel.length >= 12) {
     const img = renderChartPanel(hourlyPanel, { width: LARGE_CONTENT_WIDTH, height: HOURLY_PANEL_HEIGHT, mode: "hourly" });
-    const imgEl = widget.addImage(img);
-    imgEl.imageSize = new Size(LARGE_CONTENT_WIDTH, HOURLY_PANEL_HEIGHT);
+    centeredImage(img, new Size(LARGE_CONTENT_WIDTH, HOURLY_PANEL_HEIGHT));
     widget.addSpacer(5);
   }
 
@@ -994,8 +1037,7 @@ function buildLargeWidget(data) {
   // not a design choice.
   if (hourly.length >= 24 && daily.length) {
     const img = renderChartPanel(hourly, { width: LARGE_CONTENT_WIDTH, height: DAILY_PANEL_HEIGHT, mode: "daily", daily });
-    const imgEl = widget.addImage(img);
-    imgEl.imageSize = new Size(LARGE_CONTENT_WIDTH, DAILY_PANEL_HEIGHT);
+    centeredImage(img, new Size(LARGE_CONTENT_WIDTH, DAILY_PANEL_HEIGHT));
   }
 
   return widget;

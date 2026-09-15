@@ -61,19 +61,35 @@ for a fresh read.
 
 `buildLargeWidget()` is a like-for-like recreation of an Apple Weather
 watch-app screenshot: a header (current temp/feels-like/icon, kept small,
-next to a 4-row Humidity/Pressure/UV/Wind stat column in the space that
-frees up), a precip-intensity status line with a short rail showing the
-next few hours' rain rate, then two stacked chart panels. Both panels are drawn
-by the same `renderChartPanel()` function into an offscreen `DrawContext`
-(Scriptable's `ListWidget` layout system can only stack text/images/spacers
-— it can't draw curves or bars directly) and dropped into the widget as
-images:
+next to a Wind/UV | Humidity/Pressure stat grid — two 2-row columns side
+by side — in the space that frees up), a precip-intensity status line with
+a short rail showing the next few hours' rain rate, then two stacked chart
+panels. Both panels are drawn by the same `renderChartPanel()` function
+into an offscreen `DrawContext` (Scriptable's `ListWidget` layout system
+can only stack text/images/spacers — it can't draw curves or bars
+directly) and dropped into the widget as images, each centered in its own
+row with a flexible spacer on either side (LARGE_CONTENT_WIDTH targets the
+smallest large-widget frame, so on a wider phone the image is narrower
+than the available space — without the spacers that gap all landed on the
+right, making the charts look left-adjusted instead of centered):
 - **Hourly panel** — the next ~36 hours, x-axis labeled with hour-of-day
   numbers and a day-name chip at each midnight (`18 · FRI · 6 · 12 · 18 ·
   SAT`, matching the reference).
-- **Daily panel** — every hour the worker returns (5 days), x-axis labeled
-  with one day name per day and that day's hi/lo plotted right on the curve
-  at its peak/trough.
+- **Daily panel** — every hour the worker returns from now onward (up to
+  5 days), x-axis labeled with one day name per day and that day's hi/lo
+  plotted right on the curve at its peak/trough.
+
+Both panels open on the **current hour**, not midnight. Open-Meteo's
+hourly array (`data.hourly` from the worker) starts at today's local
+midnight regardless of what time it actually is, so `buildLargeWidget()`
+first finds `nowIdx` — the first hour at/after `Date.now()` — and slices
+from there before either panel ever sees the data; everything downstream
+(`hourly` inside `buildLargeWidget`, both panels, and the rain-event search
+for the status line) uses that trimmed view. `renderChartPanel()` itself
+never assumes its input starts at midnight either: day boundaries are
+found by scanning for real local-midnight hours (`dayBoundaries`), not by
+stepping in fixed 24-hour blocks from index 0 — since index 0 is now
+partway through today rather than a day boundary itself.
 
 Each panel draws, back to front: a translucent dark band behind every
 night hour (`drawDayNightBands`, keyed off the worker's own `dayOrNight`
