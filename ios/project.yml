@@ -1,0 +1,50 @@
+# XcodeGen spec: the .xcodeproj is generated (locally on a Mac, or in CI) and is
+# NOT committed. Edit this file, not the project. See ios/README.md.
+name: WeatherTempo
+options:
+  bundleIdPrefix: nz.sewell
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  WeatherTempoKit:
+    path: Packages/WeatherTempoKit
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Set your Apple ID team id here (or in Xcode) to sign for a real device.
+    # CI overrides signing off for unsigned builds.
+    DEVELOPMENT_TEAM: ""
+targets:
+  WeatherTempo:
+    type: application
+    platform: iOS
+    sources:
+      - path: WeatherTempo
+    dependencies:
+      - package: WeatherTempoKit
+    info:
+      path: WeatherTempo/Info.plist
+      properties:
+        CFBundleDisplayName: WeatherTempo
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nz.sewell.weathertempo
+        TARGETED_DEVICE_FAMILY: "1"   # iPhone only
+        GENERATE_INFOPLIST_FILE: NO
+schemes:
+  WeatherTempo:
+    build:
+      targets:
+        WeatherTempo: all
+    run:
+      config: Debug
+    archive:
+      config: Release

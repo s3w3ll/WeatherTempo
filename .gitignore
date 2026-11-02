@@ -34,3 +34,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# iOS (generated / build output)
+ios/*.xcodeproj/
+ios/build/
+ios/Payload/
+ios/*.ipa
+ios/Packages/**/.build/
+ios/Packages/**/.swiftpm/
+xcuserdata/

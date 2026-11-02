@@ -1,0 +1,10 @@
+{
+  "meta": { "updated": "2026-05-21T19:25:43Z" },
+  "current": { "temp": 9.5, "condition": null },
+  "hourly": [
+    { "validTimeUtc": 1779364800, "temperature": 9, "windSpeed": 6.5, "cloudCover": null }
+  ],
+  "daily": [
+    { "temperatureMax": null, "temperatureMin": 4.2 }
+  ]
+}
