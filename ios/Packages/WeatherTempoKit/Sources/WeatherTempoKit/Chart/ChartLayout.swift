@@ -74,7 +74,8 @@ public struct ChartPalette: Sendable {
         feelsLine:        Color(r: 10,  g: 165, b: 200, a: 0.85),
         pressLine:        Color(r: 20,  g: 40,  b: 80,  a: 0.30),
         nowLine:          Color(r: 20,  g: 40,  b: 80,  a: 0.55),
-        nowLabel:         Color(r: 255, g: 255, b: 255, a: 0.7),
+        // chart.js uses white here, which disappears against the white cloud band.
+        nowLabel:         Color(r: 20,  g: 40,  b: 80,  a: 0.75),
         grid:             Color(r: 20,  g: 40,  b: 80,  a: 0.07),
         dayDivider:       Color(r: 20,  g: 40,  b: 80,  a: 0.10),
         zoneSeparator:    Color(r: 255, g: 255, b: 255, a: 0.28),

@@ -147,12 +147,17 @@ public struct MeteogramModel: Equatable {
         public let text: String
     }
 
-    /// "12am 3am 6am ..." every third local hour.
+    /// chart.js labels every 3rd hour, but at the 8 px/hour phone width that puts labels
+    /// 24 px apart and "9am12pm" runs together. Space labels at least ~30 px apart.
+    public var hourLabelStride: Int { pxPerHour * 3 >= 30 ? 3 : 6 }
+
+    /// "12am 3am 6am ..." every third (or, when narrow, sixth) local hour.
     public var hourLabels: [HourLabel] {
-        hours.enumerated().compactMap { i, h in
+        let stride = hourLabelStride
+        return hours.enumerated().compactMap { i, h in
             guard h.validTimeUtc != 0 else { return nil }
             let hour = calendar.component(.hour, from: h.date)
-            guard hour % 3 == 0 else { return nil }
+            guard hour % stride == 0 else { return nil }
             let text: String
             switch hour {
             case 0: text = "12am"

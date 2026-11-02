@@ -126,11 +126,19 @@ private func model(_ hours: [Hour], pph: Double = 8, now: Date = SampleData.refe
         #expect(model([]).tempMarkers.isEmpty)
     }
 
-    @Test func hourLabelsEveryThreeLocalHours() {
-        // reference start is local midnight (NZDT)
-        let m = model((0..<24).map { hour($0) })
+    @Test func hourLabelsEveryThreeLocalHoursWhenThereIsRoom() {
+        // reference start is local midnight (NZDT); 12 px/h = 36 px between labels
+        let m = model((0..<24).map { hour($0) }, pph: 12)
+        #expect(m.hourLabelStride == 3)
         #expect(m.hourLabels.map(\.text) == ["12am", "3am", "6am", "9am", "12pm", "3pm", "6pm", "9pm"])
         #expect(m.hourLabels.map(\.index) == [0, 3, 6, 9, 12, 15, 18, 21])
+    }
+
+    @Test func hourLabelsEverySixHoursOnNarrowCharts() {
+        // 8 px/h would put labels 24 px apart and they collide
+        let m = model((0..<24).map { hour($0) }, pph: 8)
+        #expect(m.hourLabelStride == 6)
+        #expect(m.hourLabels.map(\.text) == ["12am", "6am", "12pm", "6pm"])
     }
 
     @Test func dayBoundariesFollowLocalMidnightNotUTC() {
