@@ -32,7 +32,7 @@ enum ThemeRGB {
     static let text = RGB(26, 38, 64)
     static let strong = RGB(10, 20, 38)
     static let muted = RGB(86, 112, 142)
-    static let fade = RGB(96, 117, 138)
+    static let fade = RGB(88, 108, 130)
     static let warmText = RGB(176, 93, 21)
     static let cyanText = RGB(8, 125, 152)
     static let redText = RGB(208, 57, 81)
