@@ -7,6 +7,48 @@ public enum SampleData {
     /// 2026-11-03 00:00 NZDT (= 2026-11-02 11:00 UTC), so index 0 is local midnight.
     public static let referenceStart = Date(timeIntervalSince1970: 1_793_617_200)
 
+    /// 2:00 pm on the reference day: a convenient "now" for previews and tests.
+    public static let referenceNow = referenceStart.addingTimeInterval(14 * 3600)
+
+    /// A complete, internally consistent payload (current block, 5 daily rows, moon, meta)
+    /// built from `hours()`. The first hour is local midnight, so earlier hours are "in the
+    /// past" relative to `now`; the real Worker may send only future hours.
+    public static func payload(now: Date = referenceNow, hourCount: Int = 120) -> WeatherPayload {
+        let hs = hours(count: hourCount)
+        let nowSec = now.timeIntervalSince1970
+        let cur = hs.last { $0.validTimeUtc <= nowSec } ?? hs[0]
+
+        // Five days; sunrise 06:06, sunset 20:05 local (close to early-November Christchurch).
+        let daily: [WeatherPayload.Day] = (0..<5).map { d in
+            let dayStart = referenceStart.timeIntervalSince1970 + Double(d) * 86_400
+            let temps = hs.filter { $0.validTimeUtc >= dayStart && $0.validTimeUtc < dayStart + 86_400 }
+                .compactMap(\.temperature)
+            return WeatherPayload.Day(
+                calendarDayTemperatureMax: temps.max(), calendarDayTemperatureMin: temps.min(),
+                temperatureMax: temps.max(), temperatureMin: temps.min(),
+                sunriseTimeUtc: dayStart + 6 * 3600 + 6 * 60, sunsetTimeUtc: dayStart + 20 * 3600 + 5 * 60)
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        return WeatherPayload(
+            meta: .init(updated: iso.string(from: now), location: "Christchurch, New Zealand",
+                        lat: -43.5321, lon: 172.6362,
+                        sourceStatus: .init(openMeteo: "ok", pws: "ok", currentSource: "pws")),
+            current: .init(
+                temp: cur.temperature, feelsLike: cur.temperatureFeelsLike, humidity: cur.relativeHumidity,
+                pressure: cur.pressureMeanSeaLevel, windSpeed: cur.windSpeed, windGust: cur.windGust,
+                windDirection: cur.windDirection, windCardinal: cur.windDirectionCardinal,
+                uvIndex: cur.uvIndex, dewPoint: ((cur.temperature ?? 10) - 3).rounded(), solarRad: 420,
+                condition: cur.wxPhraseMedium, cloudPhrase: cur.wxPhraseMedium, iconCode: (cur.qpf ?? 0) > 0 ? 11 : 30,
+                sunriseUtc: daily[0].sunriseTimeUtc, sunsetUtc: daily[0].sunsetTimeUtc,
+                tempMax24h: daily[0].calendarDayTemperatureMax, tempMin24h: daily[0].calendarDayTemperatureMin),
+            today: .init(moonPhase: "Waxing Crescent", moonPhaseCode: "WXC", moonPhaseDay: 5),
+            hourly: hs,
+            daily: daily)
+    }
+
     public static func hours(start: Date = referenceStart, count: Int = 120) -> [WeatherPayload.Hour] {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = MeteogramModel.nzTimeZone
