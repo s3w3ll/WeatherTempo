@@ -325,7 +325,10 @@ public enum MeteogramRenderer {
                 line(CGPoint(x: x, y: stemY1), CGPoint(x: x, y: stemY2)),
                 with: .color(color.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
 
-            haloLabel("\(Int(t.rounded()))°", at: CGPoint(x: x, y: labelY), size: 11, color: color, halo: p.halo, &ctx)
+            // Keep the label inside the chart: a high/low on the first or last hour would otherwise be
+            // half cut off (the dot, stem and curve stay at the true position).
+            let labelX = min(max(x, 14), m.width - 14)
+            haloLabel("\(Int(t.rounded()))°", at: CGPoint(x: labelX, y: labelY), size: 11, color: color, halo: p.halo, &ctx)
         }
     }
 
