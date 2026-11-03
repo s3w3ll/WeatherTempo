@@ -73,6 +73,8 @@ public final class DashboardModel {
     @ObservationIgnored private let clock: () -> Date
     /// Bumped on every location change; a refresh that finishes under an older generation is dropped.
     @ObservationIgnored private var generation = 0
+    /// Called after every successful refresh (the alert planner hangs off this).
+    @ObservationIgnored public var onFreshPayload: ((WeatherPayload, Location) -> Void)?
 
     public init(
         client: WeatherClient = WeatherClient(),
@@ -132,6 +134,7 @@ public final class DashboardModel {
             lastRefreshFailed = false
             try? cache.save(fresh, locationID: target.id)
             reloadWidgets()
+            onFreshPayload?(fresh, target)
         } catch {
             // Backgrounding the app cancels the task: not a failure, don't show "Offline".
             if Task.isCancelled || error is CancellationError { return }

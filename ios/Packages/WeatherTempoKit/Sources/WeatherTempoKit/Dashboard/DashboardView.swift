@@ -7,12 +7,16 @@ public struct DashboardContent: View {
     let state: DashboardState
     var onPickLocation: () -> Void = {}
     var onChangeDays: (Int) -> Void = { _ in }
+    /// nil hides the alerts button (previews, snapshots).
+    var onOpenAlerts: (() -> Void)?
     @Environment(\.staticRender) private var staticRender
 
-    public init(state: DashboardState, onPickLocation: @escaping () -> Void = {}, onChangeDays: @escaping (Int) -> Void = { _ in }) {
+    public init(state: DashboardState, onPickLocation: @escaping () -> Void = {},
+                onChangeDays: @escaping (Int) -> Void = { _ in }, onOpenAlerts: (() -> Void)? = nil) {
         self.state = state
         self.onPickLocation = onPickLocation
         self.onChangeDays = onChangeDays
+        self.onOpenAlerts = onOpenAlerts
     }
 
     public var body: some View {
@@ -60,6 +64,14 @@ public struct DashboardContent: View {
             } else if let p = state.payload {
                 Text(TimeFormat.relative(since: p.updatedDate, now: state.now))
                     .font(.caption).foregroundStyle(Theme.fade)
+            }
+            if let onOpenAlerts {
+                Button(action: onOpenAlerts) {
+                    Image(systemName: "bell").foregroundStyle(Theme.muted)
+                        .frame(minWidth: 32, minHeight: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Alerts")
             }
         }
     }
@@ -143,11 +155,14 @@ struct StatusBannerView: View {
 /// active, and the location sheet.
 public struct DashboardView: View {
     let model: DashboardModel
+    let alerts: AlertCoordinator?
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingLocations = false
+    @State private var showingAlerts = false
 
-    public init(model: DashboardModel) {
+    public init(model: DashboardModel, alerts: AlertCoordinator? = nil) {
         self.model = model
+        self.alerts = alerts
     }
 
     public var body: some View {
@@ -157,7 +172,8 @@ public struct DashboardView: View {
                 DashboardContent(
                     state: model.state(now: timeline.date),
                     onPickLocation: { showingLocations = true },
-                    onChangeDays: { model.setChartDays($0) })
+                    onChangeDays: { model.setChartDays($0) },
+                    onOpenAlerts: alerts == nil ? nil : { showingAlerts = true })
             }
             .refreshable { await model.refresh() }
         }
@@ -170,6 +186,9 @@ public struct DashboardView: View {
                 try? await Task.sleep(for: .seconds(DashboardModel.refreshInterval))
                 await model.refreshIfStale()
             }
+        }
+        .sheet(isPresented: $showingAlerts) {
+            if let alerts { AlertSettingsView(coordinator: alerts) }
         }
         .sheet(isPresented: $showingLocations) {
             LocationPicker(selectedID: model.location.id) { picked in

@@ -38,6 +38,10 @@ targets:
         UILaunchScreen:
           UIColorName: LaunchBackground
         ITSAppUsesNonExemptEncryption: false
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - nz.sewell.weathertempo.refresh
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
