@@ -8,6 +8,7 @@ public struct TideSummary: Equatable {
         public var label: String { self == .rising ? "↑ Rising" : "↓ Falling" }
     }
 
+    public let portID: String
     public let label: String
     public let currentHeight: Double
     public let trend: Trend
@@ -23,6 +24,7 @@ public struct TideSummary: Equatable {
     public init?(location: Location, now: Date = Date()) {
         guard let port = location.tideData else { return nil }
 
+        self.portID = port.id
         self.label = location.tideLabel ?? "Tides"
         self.now = now
         self.currentHeight = TidePredictor.height(port: port, at: now)
