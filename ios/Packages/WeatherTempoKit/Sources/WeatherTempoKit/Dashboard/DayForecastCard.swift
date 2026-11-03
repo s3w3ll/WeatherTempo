@@ -13,18 +13,26 @@ struct DayForecastCard: View {
     var body: some View {
         let f = forecast
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(f.label).font(.headline).foregroundStyle(Theme.strong)
-                Text(f.date).font(.caption).foregroundStyle(Theme.muted)
-                Spacer()
-                temp(up: true, f.tempMax)
-                temp(up: false, f.tempMin)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    dayTitle
+                    Spacer()
+                    temp(up: true, f.tempMax)
+                    temp(up: false, f.tempMin)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    dayTitle
+                    HStack(spacing: 12) {
+                        temp(up: true, f.tempMax)
+                        temp(up: false, f.tempMin)
+                    }
+                }
             }
 
             row("💧") {
                 Text("Hi ").foregroundStyle(Theme.muted) + Text(pct(f.humidityMax)).foregroundStyle(Theme.blue).bold()
                     + Text(" \(hour(f.humidityMax.utcSec))  ·  Lo ").foregroundStyle(Theme.muted)
-                    + Text(pct(f.humidityMin)).foregroundStyle(Theme.cyan).bold()
+                    + Text(pct(f.humidityMin)).foregroundStyle(Theme.cyanText).bold()
                     + Text(" \(hour(f.humidityMin.utcSec))").foregroundStyle(Theme.muted)
             }
 
@@ -38,13 +46,13 @@ struct DayForecastCard: View {
             Divider().overlay(Theme.separator)
 
             row("💨") {
-                Text(windText).foregroundStyle(Theme.red).bold()
+                Text(windText).foregroundStyle(Theme.redText).bold()
             }
             row("🌧") {
                 Text(precipText).foregroundStyle(Theme.blue).bold()
             }
             row("☀️") {
-                Text("UV \(f.uvPeak.map { WeatherInsights.uvLabel($0) } ?? "—")").foregroundStyle(Theme.warm).bold()
+                Text("UV \(f.uvPeak.map { WeatherInsights.uvLabel($0) } ?? "—")").foregroundStyle(Theme.warmText).bold()
                     + Text("  ·  \(f.uvWindow ?? "Below 3")").foregroundStyle(Theme.muted)
             }
 
@@ -55,8 +63,17 @@ struct DayForecastCard: View {
                 pressure(up: false, f.pressureMin)
             }
         }
-        .font(.system(size: 13))
+        .scaledFont(13, relativeTo: .body)
         .dashboardCard()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AccessibilityText.day(f, timeZone: timeZone))
+    }
+
+    private var dayTitle: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(forecast.label).font(.headline).foregroundStyle(Theme.strong)
+            Text(forecast.date).font(.caption).foregroundStyle(Theme.muted)
+        }
     }
 
     private var windText: String {
@@ -73,9 +90,9 @@ struct DayForecastCard: View {
     private func temp(up: Bool, _ r: WeatherInsights.Reading) -> some View {
         HStack(spacing: 3) {
             Image(systemName: up ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: 8)).foregroundStyle(up ? Theme.warm : Theme.cyan)
+                .scaledFont(8, relativeTo: .caption).foregroundStyle(up ? Theme.warm : Theme.cyan)
             Text(NumberFormat.rounded(r.value, suffix: "°"))
-                .font(.system(size: 16, weight: .semibold)).foregroundStyle(up ? Theme.warm : Theme.cyan)
+                .scaledFont(16, weight: .semibold, relativeTo: .body).foregroundStyle(up ? Theme.warmText : Theme.cyanText)
             Text(hour(r.utcSec)).font(.caption2).foregroundStyle(Theme.muted)
         }
     }
@@ -90,7 +107,7 @@ struct DayForecastCard: View {
     private func pressure(up: Bool, _ r: WeatherInsights.Reading) -> some View {
         HStack(spacing: 4) {
             Image(systemName: up ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: 8)).foregroundStyle(up ? Theme.warm : Theme.cyan)
+                .scaledFont(8, relativeTo: .caption).foregroundStyle(up ? Theme.warm : Theme.cyan)
             Text(hPa(r)).foregroundStyle(Theme.text).fontWeight(.semibold)
             Text(hour(r.utcSec)).font(.caption2).foregroundStyle(Theme.muted)
         }

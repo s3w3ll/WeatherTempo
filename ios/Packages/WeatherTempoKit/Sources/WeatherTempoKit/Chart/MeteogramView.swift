@@ -93,6 +93,7 @@ public struct MeteogramView: View {
                 // ("now" 30 % in from the left) instead of a ScrollView.
                 let scrollX = max(0, model.hourX(model.nowIndex) - viewport * 0.3)
                 MeteogramCanvas(model: model)
+                    .accessibilityHidden(true)
                     .offset(x: -scrollX)
                     .frame(width: viewport, height: model.height, alignment: .leading)
                     .clipped()
@@ -111,6 +112,21 @@ public struct MeteogramView: View {
                     .contentShape(Rectangle())
                     .simultaneousGesture(tapGesture(model))
                     .gesture(scrubGesture(model))
+                    // A canvas has no accessible structure: describe it, and let VoiceOver
+                    // step through the hours with swipe up / down.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(model.accessibilitySummary)
+                    .accessibilityValue(selected.map { model.spokenDetail(for: $0) } ?? "")
+                    .accessibilityAdjustableAction { direction in
+                        let last = model.hours.count - 1
+                        guard last >= 0 else { return }
+                        let from = selected ?? model.nowIndex
+                        switch direction {
+                        case .increment: select(min(last, selected == nil ? from : from + 1))
+                        case .decrement: select(max(0, selected == nil ? from : from - 1))
+                        @unknown default: break
+                        }
+                    }
                 }
                 .onAppear { proxy.scrollTo("now", anchor: UnitPoint(x: 0.3, y: 0.5)) }
             }
@@ -165,7 +181,7 @@ struct HourDetailStrip: View {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 2) {
                     ForEach(model.detailRows(for: index), id: \.label) { row in
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(row.label).font(.system(size: 9)).foregroundStyle(.secondary)
+                            Text(row.label).scaledFont(9, relativeTo: .caption).foregroundStyle(.secondary)
                             Text(row.value).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }
@@ -192,7 +208,7 @@ public struct MeteogramLegend: View {
             item("Precip", p.precipLine, dashed: false)
             item("Pressure", p.pressLine, dashed: true)
         }
-        .font(.system(size: 10))
+        .scaledFont(10, relativeTo: .caption)
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .minimumScaleFactor(0.8)

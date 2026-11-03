@@ -153,7 +153,7 @@ extension ChartPalette {
         dayDivider:       Color(r: 255, g: 255, b: 255, a: 0.16),
         zoneSeparator:    Color(r: 255, g: 255, b: 255, a: 0.18),
         text:             .white,
-        textMuted:        Color(r: 169, g: 201, b: 232),
+        textMuted:        Color(r: 196, g: 219, b: 242),
         halo:             Color(r: 28,  g: 63,  b: 116, a: 0.85),
         cloud:            Color(r: 255, g: 255, b: 255, a: 0.30),
         dayAxisBackground: Color(r: 0,  g: 0,   b: 0,   a: 0.15),

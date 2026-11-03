@@ -37,6 +37,7 @@ public struct DashboardContent: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility3)
     }
 
     // MARK: Header
@@ -55,7 +56,7 @@ public struct DashboardContent: View {
             .accessibilityLabel("Location: \(state.location.name). Change location")
             Spacer(minLength: 8)
             if state.isRefreshing {
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.small).accessibilityLabel("Refreshing")
             } else if let p = state.payload {
                 Text(TimeFormat.relative(since: p.updatedDate, now: state.now))
                     .font(.caption).foregroundStyle(Theme.fade)
@@ -120,8 +121,8 @@ struct StatusBannerView: View {
     private var tint: Color {
         switch banner.level {
         case .info: return Theme.blue
-        case .warning: return Color(r: 191, g: 120, b: 0)
-        case .error: return Theme.red
+        case .warning: return Color(r: 133, g: 77, b: 0)
+        case .error: return Color(r: 180, g: 30, b: 55)
         }
     }
 

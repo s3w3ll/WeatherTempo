@@ -12,6 +12,8 @@ struct ConditionsCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(AccessibilityText.current(payload, insights))
             HourlyStrip(cells: insights.hourlyStrip())
             Divider().overlay(Theme.separator)
             StatsGrid(stats: stats)
@@ -25,19 +27,10 @@ struct ConditionsCard: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .center) {
-                Text(insights.currentGlyph).font(.system(size: 40))
-                Text(c.temp.map { "\(Int($0.rounded()))°" } ?? "—°")
-                    .font(.system(size: 56, weight: .light))
-                    .foregroundStyle(Theme.strong)
-                    .minimumScaleFactor(0.7)
-                Spacer(minLength: 8)
-                if let hl = insights.displayHighLow {
-                    VStack(alignment: .trailing, spacing: 6) {
-                        extremeRow(up: true, hl.high)
-                        extremeRow(up: false, hl.low)
-                    }
-                }
+            // Temperature beside today's high/low; at large text sizes they stack instead.
+            ViewThatFits(in: .horizontal) {
+                tempRow(stacked: false)
+                tempRow(stacked: true)
             }
             Text(c.condition ?? c.cloudPhrase ?? "—")
                 .font(.headline).foregroundStyle(Theme.text)
@@ -47,12 +40,35 @@ struct ConditionsCard: View {
         }
     }
 
+    private func tempRow(stacked: Bool) -> some View {
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 8))
+        return layout {
+            HStack(alignment: .center) {
+                Text(insights.currentGlyph).scaledFont(40, relativeTo: .largeTitle)
+                Text(c.temp.map { "\(Int($0.rounded()))°" } ?? "—°")
+                    .scaledFont(56, weight: .light, relativeTo: .largeTitle)
+                    .foregroundStyle(Theme.strong)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            if !stacked { Spacer(minLength: 8) }
+            if let hl = insights.displayHighLow {
+                VStack(alignment: stacked ? .leading : .trailing, spacing: 6) {
+                    extremeRow(up: true, hl.high)
+                    extremeRow(up: false, hl.low)
+                }
+            }
+        }
+    }
+
     private func extremeRow(up: Bool, _ e: WeatherInsights.Extreme) -> some View {
         HStack(spacing: 5) {
             Image(systemName: up ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: 9)).foregroundStyle(up ? Theme.warm : Theme.cyan)
+                .scaledFont(9, relativeTo: .caption).foregroundStyle(up ? Theme.warm : Theme.cyan)
             Text(NumberFormat.rounded(e.temp, suffix: "°"))
-                .font(.system(size: 17, weight: .semibold)).foregroundStyle(up ? Theme.warm : Theme.cyan)
+                .scaledFont(17, weight: .semibold, relativeTo: .title3).foregroundStyle(up ? Theme.warmText : Theme.cyanText)
             Text(TimeFormat.hour(e.utcSec, in: tz))
                 .font(.caption).foregroundStyle(Theme.muted)
                 .frame(minWidth: 34, alignment: .leading)
@@ -72,17 +88,17 @@ struct ConditionsCard: View {
         }()
 
         return [
-            Stat(symbol: "humidity", value: c.humidity.map { "\(NumberFormat.trimmed($0))%" } ?? "—", label: "Humidity"),
-            Stat(symbol: "wind", value: c.windSpeed.map { "\(NumberFormat.trimmed($0)) km/h" } ?? "—",
+            Stat(title: "Humidity", symbol: "humidity", value: c.humidity.map { "\(NumberFormat.trimmed($0))%" } ?? "—", label: "Humidity"),
+            Stat(title: "Wind", symbol: "wind", value: c.windSpeed.map { "\(NumberFormat.trimmed($0)) km/h" } ?? "—",
                  label: insights.currentWindCardinal),
-            Stat(symbol: "wind.snow", value: gust.map { "\(Int($0.rounded())) km/h" } ?? "—", label: "Gust"),
-            Stat(symbol: "gauge", value: NumberFormat.rounded(c.pressure, suffix: " hPa"),
+            Stat(title: "Gust", symbol: "wind.snow", value: gust.map { "\(Int($0.rounded())) km/h" } ?? "—", label: "Gust"),
+            Stat(title: "Pressure", symbol: "gauge", value: NumberFormat.rounded(c.pressure, suffix: " hPa"),
                  label: insights.pressureTrend?.label ?? "Pressure"),
-            Stat(symbol: "drop", value: NumberFormat.rounded(c.dewPoint, suffix: "°"), label: "Dew point"),
-            Stat(symbol: "cloud", value: insights.currentCloudCover.map { "\(NumberFormat.trimmed($0))%" } ?? "—", label: "Cloud"),
-            Stat(symbol: "cloud.rain", value: agg.rainMm.map { "\(NumberFormat.trimmed($0)) mm" } ?? "—",
+            Stat(title: "Dew point", symbol: "drop", value: NumberFormat.rounded(c.dewPoint, suffix: "°"), label: "Dew point"),
+            Stat(title: "Cloud cover", symbol: "cloud", value: insights.currentCloudCover.map { "\(NumberFormat.trimmed($0))%" } ?? "—", label: "Cloud"),
+            Stat(title: "Rain today", symbol: "cloud.rain", value: agg.rainMm.map { "\(NumberFormat.trimmed($0)) mm" } ?? "—",
                  label: agg.peakChance.map { "Peak \(NumberFormat.trimmed($0))%" } ?? "Rain today"),
-            Stat(symbol: "sun.max", value: c.uvIndex.map { WeatherInsights.uvLabel($0) } ?? "—", label: uvLabel),
+            Stat(title: "UV index", symbol: "sun.max", value: c.uvIndex.map { WeatherInsights.uvLabel($0) } ?? "—", label: uvLabel),
         ]
     }
 
@@ -104,7 +120,9 @@ struct ConditionsCard: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
+            .accessibilityElement(children: .combine)
         }
+        .accessibilityElement(children: .contain)
     }
 
     private func astro(symbol: String, tint: Color, title: String, value: String) -> some View {
@@ -115,10 +133,12 @@ struct ConditionsCard: View {
                 Text(value).font(.caption.weight(.semibold)).foregroundStyle(Theme.text)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
 struct Stat: Identifiable {
+    let title: String      // spoken name: "Wind", "Dew point"
     let symbol: String
     let value: String
     let label: String
@@ -127,21 +147,30 @@ struct Stat: Identifiable {
 
 struct StatsGrid: View {
     let stats: [Stat]
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 4)
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// 4 across normally; 2 then 1 as text grows so values never truncate.
+    private var columns: [GridItem] {
+        let n = typeSize >= .accessibility1 ? 1 : (typeSize >= .xLarge ? 2 : 4)
+        return Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: n)
+    }
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 14) {
             ForEach(stats) { s in
                 VStack(spacing: 3) {
-                    Image(systemName: s.symbol).font(.system(size: 15)).foregroundStyle(Theme.muted)
+                    Image(systemName: s.symbol).scaledFont(15, relativeTo: .body).foregroundStyle(Theme.muted)
                     Text(s.value)
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.strong)
+                        .scaledFont(14, weight: .semibold, relativeTo: .body).foregroundStyle(Theme.strong)
                         .lineLimit(1).minimumScaleFactor(0.65)
                     Text(s.label)
-                        .font(.system(size: 10)).foregroundStyle(Theme.muted)
+                        .scaledFont(10, relativeTo: .caption).foregroundStyle(Theme.muted)
                         .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(s.title)
+                .accessibilityValue(AccessibilityText.spoken(s.value) + (s.label == s.title ? "" : ", " + AccessibilityText.spoken(s.label)))
             }
         }
     }
@@ -166,15 +195,17 @@ struct HourlyStrip: View {
             HStack(spacing: 4) {
                 ForEach(cells) { cell in
                     VStack(spacing: 4) {
-                        Text(cell.time).font(.system(size: 11)).foregroundStyle(cell.isNow ? Theme.warm : Theme.muted)
+                        Text(cell.time).scaledFont(11, relativeTo: .caption).foregroundStyle(cell.isNow ? Theme.warmText : Theme.muted)
                             .fontWeight(cell.isNow ? .semibold : .regular)
-                        Text(cell.glyph).font(.system(size: 22))
-                        Text(cell.temp).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.strong)
-                        Text(cell.precip).font(.system(size: 11))
+                        Text(cell.glyph).scaledFont(22, relativeTo: .title3)
+                        Text(cell.temp).scaledFont(15, weight: .semibold, relativeTo: .body).foregroundStyle(Theme.strong)
+                        Text(cell.precip).scaledFont(11, relativeTo: .caption)
                             .foregroundStyle(cell.precip == "·" ? Theme.fade : Theme.blue)
                     }
-                    .frame(width: 46)
+                    .frame(minWidth: 46)
                     .padding(.vertical, 8)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(AccessibilityText.stripCell(cell))
                     .background(cell.isNow ? Theme.warm.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
                 }
             }

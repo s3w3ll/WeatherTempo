@@ -21,19 +21,21 @@ public struct WidgetBackground: View {
 
     public var body: some View {
         LinearGradient(
+            // Darker than the Scriptable widget's gradient: its light-blue bottom stop gave the
+            // muted and cyan text only ~2.5:1 contrast (AccessibilityContrastTests keeps this honest).
             stops: [
-                .init(color: Color(r: 28, g: 63, b: 116), location: 0),
-                .init(color: Color(r: 46, g: 92, b: 143), location: 0.55),
-                .init(color: Color(r: 74, g: 125, b: 176), location: 1),
+                .init(color: ThemeRGB.skyTop.color, location: 0),
+                .init(color: ThemeRGB.skyMid.color, location: 0.55),
+                .init(color: ThemeRGB.skyBottom.color, location: 1),
             ],
             startPoint: .top, endPoint: .bottom)
     }
 }
 
 private enum Sky {
-    static let text = Color.white
-    static let muted = Color(r: 169, g: 201, b: 232)
-    static let cyan = Color(r: 95, g: 214, b: 242)
+    static let text = ThemeRGB.skyWhite.color
+    static let muted = ThemeRGB.skyMuted.color
+    static let cyan = ThemeRGB.skyCyan.color
 }
 
 /// All widget layouts. Pure SwiftUI over a `WidgetSnapshot`; the extension adds only the
@@ -51,9 +53,16 @@ public struct WeatherWidgetView: View {
         if let payload = snapshot.payload {
             let insights = WeatherInsights(payload: payload, now: snapshot.date, timeZone: snapshot.location.timeZone)
             switch size {
-            case .small: SmallWidget(snapshot: snapshot, payload: payload, insights: insights)
-            case .medium: MediumWidget(snapshot: snapshot, payload: payload, insights: insights)
-            case .large: LargeWidget(snapshot: snapshot, payload: payload, insights: insights)
+            case .small:
+                SmallWidget(snapshot: snapshot, payload: payload, insights: insights)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(summary(payload, insights))
+            case .medium:
+                MediumWidget(snapshot: snapshot, payload: payload, insights: insights)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(summary(payload, insights))
+            case .large:
+                LargeWidget(snapshot: snapshot, payload: payload, insights: insights)
             case .lockRectangular: LockRectangular(payload: payload, insights: insights)
             case .lockCircular: LockCircular(payload: payload, insights: insights)
             case .lockInline: LockInline(payload: payload, insights: insights)
@@ -65,6 +74,13 @@ public struct WeatherWidgetView: View {
 }
 
 // MARK: - Shared bits
+
+/// What VoiceOver reads for a widget: the dashboard's conditions sentence plus the rain outlook.
+private func summary(_ payload: WeatherPayload, _ insights: WeatherInsights) -> String {
+    var s = AccessibilityText.current(payload, insights)
+    if let rain = insights.nextRainToday { s += " " + rain.summary(in: insights.timeZone) + "." }
+    return s
+}
 
 private func temp(_ v: Double?) -> String { v.map { "\(Int($0.rounded()))°" } ?? "—" }
 
@@ -169,9 +185,14 @@ private struct LargeWidget: View {
     var body: some View {
         let c = payload.current
         VStack(alignment: .leading, spacing: 6) {
-            header(c)
-            rainLine
+            Group {
+                header(c)
+                rainLine
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(summary(payload, insights))
             WidgetChart(insights: insights, now: snapshot.date, tz: tz)
+                .accessibilityHidden(true)
             DailyStrip(cells: insights.dailyStrip)
         }
     }
@@ -254,6 +275,8 @@ private struct DailyStrip: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(AccessibilityText.daily(c))
             }
         }
     }

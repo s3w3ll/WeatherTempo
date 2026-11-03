@@ -46,6 +46,19 @@ import UniformTypeIdentifiers
         }
     }
 
+    @Test func rendersAtAccessibilityTextSize() throws {
+        // Dynamic Type at an accessibility size: stats go to one column, headers stack.
+        let view = DashboardContent(state: .sample)
+            .frame(width: 390)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(DashboardBackground())
+            .environment(\.staticRender, true)
+            .environment(\.dynamicTypeSize, .accessibility1)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        try save(try #require(renderer.cgImage), named: "dashboard-accessibility1")
+    }
+
     @Test func rendersInlandLocationWithoutTides() throws {
         var state = DashboardState.sample
         state.location = .named("hamilton")

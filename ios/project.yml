@@ -35,7 +35,9 @@ targets:
       path: WeatherTempo/Info.plist
       properties:
         CFBundleDisplayName: WeatherTempo
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        ITSAppUsesNonExemptEncryption: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

@@ -15,13 +15,16 @@ struct TidesCard: View {
                 HStack(spacing: 6) {
                     Text("Now").font(.caption).foregroundStyle(Theme.muted)
                     Text(String(format: "%.1f m", tides.currentHeight))
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.strong)
-                    Text(tides.trend.label).font(.caption).foregroundStyle(Theme.cyan)
+                        .scaledFont(15, weight: .semibold, relativeTo: .body).foregroundStyle(Theme.strong)
+                    Text(tides.trend.label).font(.caption).foregroundStyle(Theme.cyanText)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(AccessibilityText.tideHeader(tides))
 
             TideMiniChart(tides: tides, timeZone: timeZone)
                 .frame(height: 76)
+                .accessibilityHidden(true)   // the same information is in the event rows below
 
             VStack(spacing: 10) {
                 if tides.events.isEmpty {
@@ -38,8 +41,10 @@ struct TidesCard: View {
                         }
                         Spacer()
                         Text(String(format: "%.1f m", ev.height))
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.cyan)
+                            .scaledFont(15, weight: .semibold, relativeTo: .body).foregroundStyle(Theme.cyanText)
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(AccessibilityText.tideEvent(ev, timeZone: timeZone))
                 }
             }
         }
