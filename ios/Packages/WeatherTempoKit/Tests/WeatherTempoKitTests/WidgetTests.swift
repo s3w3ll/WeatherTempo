@@ -49,7 +49,7 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
         #expect(web != compact)
     }
 
-    @Test func compactChartRendersWithSkyPalette() throws {
+    @MainActor @Test func compactChartRendersWithSkyPalette() throws {
         let hours = SampleData.hours(count: 30)
         let m = MeteogramModel(hours: hours, pxPerHour: 10, now: SampleData.referenceNow, layout: .compact)
         let r = ImageRenderer(content: MeteogramCanvas(model: m, palette: .sky).background(WidgetBackground()))
