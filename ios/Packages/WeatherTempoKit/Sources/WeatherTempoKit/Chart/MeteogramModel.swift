@@ -14,6 +14,8 @@ public struct MeteogramModel: Equatable {
     public let hours: [Hour]
     public let pxPerHour: Double
     public let timeZone: TimeZone
+    /// Vertical zone geometry: `.web` (364 px, the dashboard) or `.compact` (widgets).
+    public let layout: ChartLayout
 
     public let tMin: Double
     public let tMax: Double
@@ -30,10 +32,17 @@ public struct MeteogramModel: Equatable {
         max(minPxPerHour, (viewportWidth - ChartPad.left - ChartPad.right) / Double(max(1, days) * 24))
     }
 
-    public init(hours: [Hour], pxPerHour: Double, now: Date = Date(), timeZone: TimeZone = MeteogramModel.nzTimeZone) {
+    public init(
+        hours: [Hour],
+        pxPerHour: Double,
+        now: Date = Date(),
+        timeZone: TimeZone = MeteogramModel.nzTimeZone,
+        layout: ChartLayout = .web
+    ) {
         self.hours = hours
         self.pxPerHour = pxPerHour
         self.timeZone = timeZone
+        self.layout = layout
 
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
@@ -57,32 +66,32 @@ public struct MeteogramModel: Equatable {
     // MARK: Size
 
     public var width: Double { ChartPad.left + Double(hours.count) * pxPerHour + ChartPad.right }
-    public var height: Double { ChartZone.height }
+    public var height: Double { layout.height }
 
     // MARK: Coordinate mapping
 
     public func hourX(_ i: Int) -> Double { ChartPad.left + Double(i) * pxPerHour + pxPerHour / 2 }
 
     public func tempY(_ t: Double) -> Double {
-        ChartZone.tempBot - (t - tMin) / (tMax - tMin) * (ChartZone.tempBot - ChartZone.tempTop)
+        layout.tempBot - (t - tMin) / (tMax - tMin) * (layout.tempBot - layout.tempTop)
     }
 
     public func pressureY(_ p: Double) -> Double {
-        ChartZone.tempBot - (p - pMin) / (pMax - pMin) * (ChartZone.tempBot - ChartZone.tempTop)
+        layout.tempBot - (p - pMin) / (pMax - pMin) * (layout.tempBot - layout.tempTop)
     }
 
     /// Wind speed ceiling in km/h; 30 km/h lands at exactly one third of the zone height.
     public static let maxWindSpeed: Double = 90
 
     public func windY(_ speed: Double) -> Double {
-        let zoneH = ChartZone.windBot - ChartZone.windTop
+        let zoneH = layout.windBot - layout.windTop
         let clamped = min(max(speed, 0), Self.maxWindSpeed)
-        return ChartZone.windBot - clamped / Self.maxWindSpeed * zoneH
+        return layout.windBot - clamped / Self.maxWindSpeed * zoneH
     }
 
     /// Rain probability: 0 % at the bottom of the precip zone, 100 % at the top.
     public func probabilityY(_ percent: Double) -> Double {
-        ChartZone.precipBot - percent / 100 * (ChartZone.precipBot - ChartZone.precipTop)
+        layout.precipBot - percent / 100 * (layout.precipBot - layout.precipTop)
     }
 
     /// Hour index nearest to an x position (hover/touch), clamped to the data.

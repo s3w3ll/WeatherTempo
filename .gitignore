@@ -43,3 +43,5 @@ ios/*.ipa
 ios/Packages/**/.build/
 ios/Packages/**/.swiftpm/
 xcuserdata/
+ios/**/Info.plist
+ios/**/*.entitlements

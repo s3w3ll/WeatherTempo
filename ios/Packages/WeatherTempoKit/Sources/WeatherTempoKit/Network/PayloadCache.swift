@@ -15,7 +15,7 @@ public struct PayloadCache: Sendable {
 
     /// App Group container if available (app + widget), otherwise the caches dir
     /// (unit tests, previews, or a build without the entitlement).
-    public static func shared(appGroup: String = "group.nz.sewell.weathertempo") -> PayloadCache {
+    public static func shared(appGroup: String = AppGroup.id) -> PayloadCache {
         let fm = FileManager.default
         let base = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
             ?? fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]

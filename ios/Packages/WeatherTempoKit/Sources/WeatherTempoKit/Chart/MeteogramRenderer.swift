@@ -23,7 +23,7 @@ public enum MeteogramRenderer {
         drawDayDividers(m, &ctx, p)
         drawNowMarker(m, &ctx, p)
         drawTimeAxis(m, &ctx, p)
-        drawDayAxis(m, &ctx, p)
+        if m.layout.showDayAxis { drawDayAxis(m, &ctx, p) }
         drawTempLabels(m, &ctx, p)
     }
 
@@ -88,7 +88,7 @@ public enum MeteogramRenderer {
         }
 
         // Swimlane separators between main / wind / precip zones
-        for y in [ChartZone.windTop, ChartZone.precipTop] {
+        for y in [m.layout.windTop, m.layout.precipTop] {
             ctx.stroke(line(CGPoint(x: 0, y: y), CGPoint(x: w, y: y)), with: .color(p.zoneSeparator), lineWidth: 2)
         }
     }
@@ -96,22 +96,22 @@ public enum MeteogramRenderer {
     // MARK: 2. Cloud cover  (_drawCloudCover)
 
     static func drawCloudCover(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
-        let zoneH = ChartZone.cloudBot - ChartZone.cloudTop
+        let zoneH = m.layout.cloudBot - m.layout.cloudTop
         ctx.drawLayer { layer in
             layer.addFilter(.blur(radius: 4))
             for run in m.cloudRuns {
                 // Bottom edge: y proportional to cloud cover, at hour centres.
                 let pts = run.map { j in
-                    CGPoint(x: m.hourX(j), y: ChartZone.cloudTop + zoneH * ((m.hours[j].cloudCover ?? 0) / 100))
+                    CGPoint(x: m.hourX(j), y: m.layout.cloudTop + zoneH * ((m.hours[j].cloudCover ?? 0) / 100))
                 }
                 let xLeft = ChartPad.left + Double(run.lowerBound) * m.pxPerHour
                 let xRight = ChartPad.left + Double(run.upperBound) * m.pxPerHour
 
                 var path = Path()
-                path.move(to: CGPoint(x: xLeft, y: ChartZone.cloudTop))   // top-left
+                path.move(to: CGPoint(x: xLeft, y: m.layout.cloudTop))   // top-left
                 path.addLine(to: pts[0])                                  // down to first bottom point
                 path.addSmoothCurve(through: pts, startNew: false)        // smooth bottom edge
-                path.addLine(to: CGPoint(x: xRight, y: ChartZone.cloudTop)) // back up, top-right
+                path.addLine(to: CGPoint(x: xRight, y: m.layout.cloudTop)) // back up, top-right
                 path.closeSubpath()
                 layer.fill(path, with: .color(p.cloud))
             }
@@ -127,7 +127,7 @@ public enum MeteogramRenderer {
         path.addSmoothCurve(through: Array(feelsPoints(m).reversed()), startNew: false)
         path.closeSubpath()
         ctx.fill(path, with: verticalGradient(
-            [(0, p.tempFillTop), (1, p.tempFillBottom)], from: ChartZone.tempTop, to: ChartZone.tempBot))
+            [(0, p.tempFillTop), (1, p.tempFillBottom)], from: m.layout.tempTop, to: m.layout.tempBot))
     }
 
     // MARK: 4/5. Temperature + feels-like lines
@@ -165,11 +165,11 @@ public enum MeteogramRenderer {
         // Pass 1: area under the speed curve
         var area = Path()
         area.addSmoothCurve(through: pts)
-        area.addLine(to: CGPoint(x: last.x, y: ChartZone.windBot))
-        area.addLine(to: CGPoint(x: first.x, y: ChartZone.windBot))
+        area.addLine(to: CGPoint(x: last.x, y: m.layout.windBot))
+        area.addLine(to: CGPoint(x: first.x, y: m.layout.windBot))
         area.closeSubpath()
         ctx.fill(area, with: verticalGradient(
-            [(0, p.windFillTop), (1, p.windFillBottom)], from: ChartZone.windTop, to: ChartZone.windBot))
+            [(0, p.windFillTop), (1, p.windFillBottom)], from: m.layout.windTop, to: m.layout.windBot))
 
         // Pass 2: speed line with a soft glow
         var curve = Path()
@@ -208,7 +208,7 @@ public enum MeteogramRenderer {
     }
 
     static func drawPrecipitation(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
-        let zoneH = ChartZone.precipBot - ChartZone.precipTop
+        let zoneH = m.layout.precipBot - m.layout.precipTop
         let barW = max(2, m.pxPerHour * 0.45)
         let pts = m.hours.enumerated().map { CGPoint(x: m.hourX($0.offset), y: m.probabilityY($0.element.precipChance ?? 0)) }
         guard let first = pts.first, let last = pts.last else { return }
@@ -216,11 +216,11 @@ public enum MeteogramRenderer {
         // Pass 1: probability area, behind everything else in this zone
         var area = Path()
         area.addSmoothCurve(through: pts)
-        area.addLine(to: CGPoint(x: last.x, y: ChartZone.precipBot))
-        area.addLine(to: CGPoint(x: first.x, y: ChartZone.precipBot))
+        area.addLine(to: CGPoint(x: last.x, y: m.layout.precipBot))
+        area.addLine(to: CGPoint(x: first.x, y: m.layout.precipBot))
         area.closeSubpath()
         ctx.fill(area, with: verticalGradient(
-            [(0, p.precipAreaTop), (1, p.precipAreaBottom)], from: ChartZone.precipTop, to: ChartZone.precipBot))
+            [(0, p.precipAreaTop), (1, p.precipAreaBottom)], from: m.layout.precipTop, to: m.layout.precipBot))
 
         // Pass 2: qpf bars (actual rain only)
         for (i, h) in m.hours.enumerated() {
@@ -228,7 +228,7 @@ public enum MeteogramRenderer {
             guard qpf > 0 else { continue }
             let intensity = min(max(qpf / m.qMax, 0), 1)
             let height = max(2, zoneH * intensity)
-            let rect = CGRect(x: m.hourX(i) - barW / 2, y: ChartZone.precipBot - height, width: barW, height: height)
+            let rect = CGRect(x: m.hourX(i) - barW / 2, y: m.layout.precipBot - height, width: barW, height: height)
             // roundRect(..., [2, 2, 0, 0]): rounded top corners only
             let bar = UnevenRoundedRectangle(
                 topLeadingRadius: 2, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 2
@@ -251,7 +251,7 @@ public enum MeteogramRenderer {
         for i in m.dayBoundaries {
             let x = m.hourX(i) - m.pxPerHour / 2
             ctx.stroke(
-                line(CGPoint(x: x, y: ChartZone.tempTop), CGPoint(x: x, y: ChartZone.precipBot)),
+                line(CGPoint(x: x, y: m.layout.tempTop), CGPoint(x: x, y: m.layout.precipBot)),
                 with: .color(p.dayDivider), lineWidth: 1)
         }
     }
@@ -269,7 +269,7 @@ public enum MeteogramRenderer {
 
         label("NOW", at: CGPoint(x: x, y: 14), size: 9, bold: true, color: p.nowLabel, &ctx)
 
-        let dot = Path(ellipseIn: CGRect(x: x - 3, y: ChartZone.tempTop + 4 - 3, width: 6, height: 6))
+        let dot = Path(ellipseIn: CGRect(x: x - 3, y: m.layout.tempTop + 4 - 3, width: 6, height: 6))
         ctx.fill(dot, with: .color(.white))
     }
 
@@ -277,24 +277,24 @@ public enum MeteogramRenderer {
 
     static func drawTimeAxis(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
         for l in m.hourLabels {
-            label(l.text, at: CGPoint(x: l.x, y: ChartZone.timeTop + 13), size: 10, color: p.textMuted, &ctx)
+            label(l.text, at: CGPoint(x: l.x, y: m.layout.timeTop + 13), size: 10, color: p.textMuted, &ctx)
         }
     }
 
     // MARK: 11b. Day axis  (_drawDayAxis)
 
     static func drawDayAxis(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
-        let stripH = ChartZone.height - ChartZone.dayAxisTop
-        ctx.fill(Path(CGRect(x: 0, y: ChartZone.dayAxisTop, width: m.width, height: stripH)), with: .color(p.dayAxisBackground))
+        let stripH = m.layout.height - m.layout.dayAxisTop
+        ctx.fill(Path(CGRect(x: 0, y: m.layout.dayAxisTop, width: m.width, height: stripH)), with: .color(p.dayAxisBackground))
         ctx.stroke(
-            line(CGPoint(x: 0, y: ChartZone.dayAxisTop), CGPoint(x: m.width, y: ChartZone.dayAxisTop)),
+            line(CGPoint(x: 0, y: m.layout.dayAxisTop), CGPoint(x: m.width, y: m.layout.dayAxisTop)),
             with: .color(p.dayDivider), lineWidth: 1)
 
         for (b, day) in m.dayLabels.enumerated() {
-            label(day.text, at: CGPoint(x: day.centerX, y: ChartZone.dayAxisTop + 12), size: 9, bold: true, color: p.text, &ctx)
+            label(day.text, at: CGPoint(x: day.centerX, y: m.layout.dayAxisTop + 12), size: 9, bold: true, color: p.text, &ctx)
             if b > 0 {
                 ctx.stroke(
-                    line(CGPoint(x: day.x0, y: ChartZone.dayAxisTop), CGPoint(x: day.x0, y: ChartZone.height)),
+                    line(CGPoint(x: day.x0, y: m.layout.dayAxisTop), CGPoint(x: day.x0, y: m.layout.height)),
                     with: .color(p.dayDivider), lineWidth: 1)
             }
         }
@@ -309,7 +309,9 @@ public enum MeteogramRenderer {
             let curveY = m.tempY(t)
             let color = marker.isHigh ? p.tempLine : p.feelsLine
             let stem = 10.0
-            let labelY = marker.isHigh ? curveY - stem - 14 : curveY + stem + 14
+            // The clamp only matters on the compact layout, where a high near the top could
+            // push its label off the canvas; on the web layout it never triggers.
+            let labelY = marker.isHigh ? max(11, curveY - stem - 14) : curveY + stem + 14
             let stemY1 = marker.isHigh ? curveY - 4 : curveY + 4
             let stemY2 = marker.isHigh ? labelY + 4 : labelY - 4
 

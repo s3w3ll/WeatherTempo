@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(iOS)
+import WidgetKit
+#endif
 
 /// Tiny persistence seam so the model can be tested without touching real UserDefaults.
 public protocol KeyValueStoring {
@@ -74,7 +77,7 @@ public final class DashboardModel {
     public init(
         client: WeatherClient = WeatherClient(),
         cache: PayloadCache = .shared(),
-        store: KeyValueStoring = UserDefaults.standard,
+        store: KeyValueStoring = AppGroup.defaults,
         clock: @escaping () -> Date = { Date() }
     ) {
         self.client = client
@@ -128,6 +131,7 @@ public final class DashboardModel {
             payload = fresh
             lastRefreshFailed = false
             try? cache.save(fresh, locationID: target.id)
+            reloadWidgets()
         } catch {
             // Backgrounding the app cancels the task: not a failure, don't show "Offline".
             if Task.isCancelled || error is CancellationError { return }
@@ -145,7 +149,16 @@ public final class DashboardModel {
         store.saveString(newLocation.id, for: Self.locationKey)
         payload = cache.load(locationID: newLocation.id)    // may be nil: the view shows a loading state
         lastRefreshFailed = false
+        reloadWidgets()
         await refresh()
+    }
+
+    /// Widgets follow the app's location and read the cache this model writes, so nudge
+    /// them whenever either changes.
+    private func reloadWidgets() {
+        #if os(iOS)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     public func setChartDays(_ days: Int) {

@@ -18,6 +18,43 @@ public enum ChartZone {
     public static let height: Double = 364
 }
 
+/// Vertical geometry of the chart as a value, so the same renderer can draw the full
+/// dashboard chart (`.web`) or a tighter one for widgets (`.compact`).
+public struct ChartLayout: Equatable, Sendable {
+    public var cloudTop: Double
+    public var cloudBot: Double
+    public var tempTop: Double
+    public var tempBot: Double
+    public var windTop: Double
+    public var windBot: Double
+    public var precipTop: Double
+    public var precipBot: Double
+    public var timeTop: Double
+    public var dayAxisTop: Double
+    public var height: Double
+    public var showDayAxis: Bool
+
+    /// The dashboard chart: exactly chart.js's `ZONE` (364 px, 70/15/15).
+    public static let web = ChartLayout(
+        cloudTop: ChartZone.cloudTop, cloudBot: ChartZone.cloudBot,
+        tempTop: ChartZone.tempTop, tempBot: ChartZone.tempBot,
+        windTop: ChartZone.windTop, windBot: ChartZone.windBot,
+        precipTop: ChartZone.precipTop, precipBot: ChartZone.precipBot,
+        timeTop: ChartZone.timeTop, dayAxisTop: ChartZone.dayAxisTop,
+        height: ChartZone.height, showDayAxis: true)
+
+    /// Widgets: 192 px tall, no day strip (the widget has its own daily row). Labels stay
+    /// at their normal 9-11 pt sizes: shrinking the 364 px layout to fit would have made
+    /// them unreadable, so the zones are tightened instead.
+    public static let compact = ChartLayout(
+        cloudTop: 4, cloudBot: 28,
+        tempTop: 26, tempBot: 112,
+        windTop: 116, windBot: 140,
+        precipTop: 144, precipBot: 168,
+        timeTop: 172, dayAxisTop: 192,
+        height: 192, showDayAxis: false)
+}
+
 public enum ChartPad {
     public static let left: Double = 6
     public static let right: Double = 6
@@ -95,5 +132,40 @@ public struct ChartPalette: Sendable {
         precipShadow:     Color(r: 60,  g: 150, b: 255, a: 0.40),
         // chart.js draws its hover line in white, which vanishes on the light theme.
         hoverLine:        Color(r: 20,  g: 40,  b: 80,  a: 0.55)
+    )
+}
+
+extension ChartPalette {
+    /// The large widget's look: transparent over the sky-blue gradient, white text, yellow
+    /// temperature, cyan feels-like. Values from COLORS in ios-widget/WeatherTempo.js.
+    public static let sky = ChartPalette(
+        bg:               .clear,
+        bgDay:            Color(r: 255, g: 255, b: 255, a: 0.07),
+        bgNight:          Color(r: 8,   g: 20,  b: 45,  a: 0.28),
+        tempFillTop:      Color(r: 242, g: 201, b: 76,  a: 0.30),
+        tempFillBottom:   Color(r: 242, g: 201, b: 76,  a: 0.02),
+        tempLine:         Color(r: 242, g: 201, b: 76),
+        feelsLine:        Color(r: 95,  g: 214, b: 242, a: 0.9),
+        pressLine:        Color(r: 255, g: 255, b: 255, a: 0.30),
+        nowLine:          Color(r: 255, g: 255, b: 255, a: 0.6),
+        nowLabel:         Color(r: 255, g: 255, b: 255, a: 0.85),
+        grid:             Color(r: 255, g: 255, b: 255, a: 0.10),
+        dayDivider:       Color(r: 255, g: 255, b: 255, a: 0.16),
+        zoneSeparator:    Color(r: 255, g: 255, b: 255, a: 0.18),
+        text:             .white,
+        textMuted:        Color(r: 169, g: 201, b: 232),
+        halo:             Color(r: 28,  g: 63,  b: 116, a: 0.85),
+        cloud:            Color(r: 255, g: 255, b: 255, a: 0.30),
+        dayAxisBackground: Color(r: 0,  g: 0,   b: 0,   a: 0.15),
+        windFillTop:      Color(r: 229, g: 72,  b: 77,  a: 0.30),
+        windFillBottom:   Color(r: 229, g: 72,  b: 77,  a: 0.03),
+        windLine:         Color(r: 255, g: 110, b: 110, a: 0.85),
+        windShadow:       Color(r: 229, g: 72,  b: 77,  a: 0.35),
+        windArrow:        Color(r: 255, g: 120, b: 120, a: 0.95),
+        precipAreaTop:    Color(r: 63,  g: 169, b: 245, a: 0.30),
+        precipAreaBottom: Color(r: 63,  g: 169, b: 245, a: 0.03),
+        precipLine:       Color(r: 127, g: 216, b: 247, a: 0.9),
+        precipShadow:     Color(r: 63,  g: 169, b: 245, a: 0.4),
+        hoverLine:        Color(r: 255, g: 255, b: 255, a: 0.6)
     )
 }

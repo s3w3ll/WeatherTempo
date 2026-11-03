@@ -25,6 +25,12 @@ targets:
       - path: WeatherTempo
     dependencies:
       - package: WeatherTempoKit
+      - target: WeatherTempoWidget
+    entitlements:
+      path: WeatherTempo/WeatherTempo.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.nz.sewell.weathertempo
     info:
       path: WeatherTempo/Info.plist
       properties:
@@ -39,6 +45,30 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: nz.sewell.weathertempo
         TARGETED_DEVICE_FAMILY: "1"   # iPhone only
         GENERATE_INFOPLIST_FILE: NO
+  WeatherTempoWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: WeatherTempoWidget
+    dependencies:
+      - package: WeatherTempoKit
+    entitlements:
+      path: WeatherTempoWidget/WeatherTempoWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.nz.sewell.weathertempo
+    info:
+      path: WeatherTempoWidget/Info.plist
+      properties:
+        CFBundleDisplayName: WeatherTempo
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nz.sewell.weathertempo.widget
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
 schemes:
   WeatherTempo:
     build:
