@@ -153,7 +153,10 @@ struct HourlyStrip: View {
 
     var body: some View {
         if staticRender {
-            row.frame(maxWidth: .infinity, alignment: .leading).clipped()
+            // Overlay so the row's ~500 pt ideal width can't widen the card.
+            Color.clear.frame(height: 86).frame(maxWidth: .infinity)
+                .overlay(alignment: .leading) { row.fixedSize() }
+                .clipped()
         } else {
             ScrollView(.horizontal, showsIndicators: false) { row }
         }

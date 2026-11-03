@@ -74,7 +74,8 @@ public struct MeteogramView: View {
                     now: now, timeZone: timeZone)
                 chart(model, viewport: geo.size.width)
             }
-            .frame(height: ChartZone.height)
+            // The GeometryReader's content is the detail strip + spacing + the chart itself.
+            .frame(height: HourDetailStrip.height + 8 + ChartZone.height)
 
             MeteogramLegend()
         }
@@ -146,6 +147,9 @@ public struct MeteogramView: View {
 
 /// The hover tooltip's content, pinned above the chart.
 struct HourDetailStrip: View {
+    /// Fixed so the layout doesn't jump when an hour is selected.
+    static let height: Double = 92
+
     let model: MeteogramModel
     let index: Int?
 
@@ -168,7 +172,7 @@ struct HourDetailStrip: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .topLeading)
     }
 }
 
