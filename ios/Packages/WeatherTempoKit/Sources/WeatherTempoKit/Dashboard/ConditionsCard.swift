@@ -149,9 +149,17 @@ struct StatsGrid: View {
 
 struct HourlyStrip: View {
     let cells: [WeatherInsights.StripCell]
+    @Environment(\.staticRender) private var staticRender
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        if staticRender {
+            row.frame(maxWidth: .infinity, alignment: .leading).clipped()
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) { row }
+        }
+    }
+
+    private var row: some View {
             HStack(spacing: 4) {
                 ForEach(cells) { cell in
                     VStack(spacing: 4) {
@@ -167,6 +175,5 @@ struct HourlyStrip: View {
                     .background(cell.isNow ? Theme.warm.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
                 }
             }
-        }
     }
 }

@@ -7,6 +7,7 @@ public struct DashboardContent: View {
     let state: DashboardState
     var onPickLocation: () -> Void = {}
     var onChangeDays: (Int) -> Void = { _ in }
+    @Environment(\.staticRender) private var staticRender
 
     public init(state: DashboardState, onPickLocation: @escaping () -> Void = {}, onChangeDays: @escaping (Int) -> Void = { _ in }) {
         self.state = state
@@ -69,11 +70,15 @@ public struct DashboardContent: View {
             HStack {
                 Text("Forecast").font(.headline).foregroundStyle(Theme.strong)
                 Spacer()
-                Picker("Days shown", selection: Binding(get: { state.chartDays }, set: onChangeDays)) {
-                    ForEach(DashboardModel.validChartDays, id: \.self) { Text("\($0) day\($0 == 1 ? "" : "s")").tag($0) }
+                if staticRender {
+                    Text("\(state.chartDays) days ⌄").font(.subheadline).foregroundStyle(Theme.muted)
+                } else {
+                    Picker("Days shown", selection: Binding(get: { state.chartDays }, set: onChangeDays)) {
+                        ForEach(DashboardModel.validChartDays, id: \.self) { Text("\($0) day\($0 == 1 ? "" : "s")").tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(Theme.muted)
                 }
-                .pickerStyle(.menu)
-                .tint(Theme.muted)
             }
             MeteogramView(hours: payload.hourly, days: state.chartDays,
                           timeZone: state.location.timeZone, now: state.now)

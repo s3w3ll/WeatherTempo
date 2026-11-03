@@ -20,6 +20,17 @@ enum Theme {
     static let separator = Color(r: 20, g: 40, b: 80, a: 0.10)
 }
 
+private struct StaticRenderKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// True when rendering to an image (CI snapshots): ImageRenderer can't draw ScrollView
+    /// contents or menu Pickers, so views swap them for static equivalents.
+    var staticRender: Bool {
+        get { self[StaticRenderKey.self] }
+        set { self[StaticRenderKey.self] = newValue }
+    }
+}
+
 extension View {
     /// The rounded translucent panel every dashboard section sits on.
     func dashboardCard() -> some View {

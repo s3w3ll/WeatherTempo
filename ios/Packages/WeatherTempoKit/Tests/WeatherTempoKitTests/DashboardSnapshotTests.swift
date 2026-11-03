@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
             .frame(width: width)
             .fixedSize(horizontal: false, vertical: true)
             .background(DashboardBackground())
+            .environment(\.staticRender, true)   // ImageRenderer can't draw ScrollViews or menu Pickers
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         return try #require(renderer.cgImage, "ImageRenderer produced no image")

@@ -51,6 +51,7 @@ public struct MeteogramView: View {
     private let now: Date
 
     @State private var selected: Int?
+    @Environment(\.staticRender) private var staticRender
 
     public init(
         hours: [WeatherPayload.Hour],
@@ -71,7 +72,7 @@ public struct MeteogramView: View {
                     hours: Array(hours.prefix(max(1, days) * 24)),
                     pxPerHour: MeteogramModel.pxPerHour(viewportWidth: geo.size.width, days: days),
                     now: now, timeZone: timeZone)
-                chart(model)
+                chart(model, viewport: geo.size.width)
             }
             .frame(height: ChartZone.height)
 
@@ -80,10 +81,19 @@ public struct MeteogramView: View {
     }
 
     @ViewBuilder
-    private func chart(_ model: MeteogramModel) -> some View {
+    private func chart(_ model: MeteogramModel, viewport: Double) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HourDetailStrip(model: model, index: selected)
 
+            if staticRender {
+                // Image rendering: show the window a user would see on first appearance
+                // ("now" 30 % in from the left) instead of a ScrollView.
+                let scrollX = max(0, model.hourX(model.nowIndex) - viewport * 0.3)
+                MeteogramCanvas(model: model)
+                    .offset(x: -scrollX)
+                    .frame(width: viewport, height: model.height, alignment: .leading)
+                    .clipped()
+            } else {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     ZStack(alignment: .topLeading) {
@@ -100,6 +110,7 @@ public struct MeteogramView: View {
                     .gesture(scrubGesture(model))
                 }
                 .onAppear { proxy.scrollTo("now", anchor: UnitPoint(x: 0.3, y: 0.5)) }
+            }
             }
         }
     }

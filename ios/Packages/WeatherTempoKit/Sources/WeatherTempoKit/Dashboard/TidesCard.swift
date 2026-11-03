@@ -8,15 +8,16 @@ struct TidesCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 4) {
                 Label(tides.label, systemImage: "water.waves")
                     .font(.headline).foregroundStyle(Theme.strong)
                     .labelStyle(.titleAndIcon)
-                Spacer()
-                Text("Now").font(.caption).foregroundStyle(Theme.muted)
-                Text(String(format: "%.1f m", tides.currentHeight))
-                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.strong)
-                Text(tides.trend.label).font(.caption).foregroundStyle(Theme.cyan)
+                HStack(spacing: 6) {
+                    Text("Now").font(.caption).foregroundStyle(Theme.muted)
+                    Text(String(format: "%.1f m", tides.currentHeight))
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.strong)
+                    Text(tides.trend.label).font(.caption).foregroundStyle(Theme.cyan)
+                }
             }
 
             TideMiniChart(tides: tides, timeZone: timeZone)
