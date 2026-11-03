@@ -105,12 +105,14 @@ private actor Requests {
     @Test func showsCachedDataEvenWhenTheNetworkFails() async {
         let cache = tempCache()
         try? cache.save(SampleData.payload(now: now), locationID: "christchurch")
-        let (m, _, _) = makeModel(cache: cache, fail: true)
+        // Cached data is 6 minutes old, so a refresh is due (fresh data would skip the network).
+        let (m, _, _) = makeModel(cache: cache, fail: true, clockAt: now.addingTimeInterval(6 * 60))
         await m.activate()
         #expect(m.payload != nil)                 // still on screen
         #expect(m.lastRefreshFailed)
         #expect(m.banner?.level == .warning)
         #expect(m.banner?.message.contains("Offline") == true)
+        #expect(m.banner?.message.contains("6 min ago") == true)
     }
 
     @Test func failureWithNothingCachedIsAnError() async {
