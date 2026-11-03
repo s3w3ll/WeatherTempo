@@ -90,8 +90,9 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
         // 14:20: the 14:00 hour is 20 minutes old and still counts
         let rain = try #require(insights([h(14, qpf: 2)], now: 14 + 20.0 / 60).nextRainToday)
         #expect(rain.utcSec == start + 14 * 3600)
-        // 14:40: 40 minutes old, no longer counts
-        #expect(insights([h(14, qpf: 2)], now: 14 + 40.0 / 60).nextRainToday == nil)
+        // 14:40: 40 minutes old, no longer counts (a dry 20:00 hour exists, so the search starts there;
+        // with *no* later hour the search deliberately falls back to the start, like the JS)
+        #expect(insights([h(14, qpf: 2), h(20)], now: 14 + 40.0 / 60).nextRainToday == nil)
     }
 
     @Test func dailyStripLabelsTodayThenWeekdays() {
@@ -115,7 +116,8 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
         let up = insights(hours, now: 10 + 0.25).upcomingHours(limit: 30)
         #expect(up.count == 30)
         #expect(up.first?.validTimeUtc == start + 10 * 3600)   // 10:00 is within the 30 min grace
-        #expect(insights(hours, now: 47).upcomingHours(limit: 30).count == 2)   // 46:00 and 47:00
+        // at 47:00 only the 47:00 hour is within the 30 min grace (46:00 is an hour old)
+        #expect(insights(hours, now: 47).upcomingHours(limit: 30).map(\.validTimeUtc) == [start + 47 * 3600])
     }
 }
 
