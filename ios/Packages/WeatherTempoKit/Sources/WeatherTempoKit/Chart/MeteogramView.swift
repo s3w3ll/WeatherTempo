@@ -41,6 +41,8 @@ struct MeteogramHoverLayer: View {
 
 /// Scrollable, interactive meteogram.
 ///
+/// - `days` is the zoom: that many days exactly fill the viewport. The chart always holds the
+///   whole forecast, so 5 days needs no scrolling and 2 days scrolls to reach the rest.
 /// - Scrolls horizontally, starting with "now" about 30 % in from the left (`scrollToNow`).
 /// - Tap an hour, or press and drag, to inspect it. The details show in a strip above the
 ///   chart rather than a floating tooltip, because a finger would cover a tooltip.
@@ -69,7 +71,7 @@ public struct MeteogramView: View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { geo in
                 let model = MeteogramModel(
-                    hours: Array(hours.prefix(max(1, days) * 24)),
+                    hours: hours,
                     pxPerHour: MeteogramModel.pxPerHour(viewportWidth: geo.size.width, days: days),
                     now: now, timeZone: timeZone)
                 chart(model, viewport: geo.size.width)
@@ -112,6 +114,7 @@ public struct MeteogramView: View {
                 }
                 .onAppear { proxy.scrollTo("now", anchor: UnitPoint(x: 0.3, y: 0.5)) }
             }
+            .id(days)   // changing the zoom rebuilds the scroll view, which re-anchors on "now"
             }
         }
     }

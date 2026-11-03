@@ -179,8 +179,8 @@ public enum MeteogramRenderer {
             layer.stroke(curve, with: .color(p.windLine), lineWidth: 1.5)
         }
 
-        // Pass 3: direction arrows every 3rd hour, centred on the speed line
-        for i in stride(from: 0, to: m.hours.count, by: 3) {
+        // Pass 3: direction arrows (every 3rd hour, thinned when zoomed out), centred on the speed line
+        for i in stride(from: 0, to: m.hours.count, by: m.windArrowInterval) {
             let h = m.hours[i]
             guard let speed = h.windSpeed else { continue }
             let a = MeteogramModel.windArrow(x: m.hourX(i), y: m.windY(speed), directionFrom: h.windDirection ?? 0)

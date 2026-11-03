@@ -32,15 +32,40 @@ private func model(_ hours: [Hour], pph: Double = 8, now: Date = SampleData.refe
         #expect(ChartZone.height == 364)
     }
 
-    @Test func pxPerHourFillsViewportButNeverBelowEight() {
-        // 390 pt phone, 2 days: (390 - 12) / 48 = 7.875 -> clamped to 8
-        #expect(MeteogramModel.pxPerHour(viewportWidth: 390, days: 2) == 8)
-        // 1 day: (390 - 12) / 24 = 15.75
+    @Test func selectedDaysExactlyFillTheViewport() {
+        // (390 - 12 padding) px spread over days * 24 hours
         #expect(MeteogramModel.pxPerHour(viewportWidth: 390, days: 1) == 15.75)
-        // 5 days never squeezes below 8 px/h: it scrolls instead
-        #expect(MeteogramModel.pxPerHour(viewportWidth: 390, days: 5) == 8)
-        // wide iPad, 2 days
+        #expect(MeteogramModel.pxPerHour(viewportWidth: 390, days: 2) == 7.875)
+        #expect(MeteogramModel.pxPerHour(viewportWidth: 390, days: 3) == 5.25)
+        #expect(MeteogramModel.pxPerHour(viewportWidth: 390, days: 5) == 3.15)   // no 8 px floor any more
         #expect(MeteogramModel.pxPerHour(viewportWidth: 1000, days: 2) > 20)
+    }
+
+    @Test func fiveDayZoomFitsAFiveDayForecastInsideTheViewportWithoutScrolling() {
+        let hours = SampleData.hours(count: 120)
+        let pph = MeteogramModel.pxPerHour(viewportWidth: 390, days: 5)
+        let m = model(hours, pph: pph)
+        #expect(abs(m.width - 390) < 1e-9)
+    }
+
+    @Test func twoDayZoomOfAFiveDayForecastScrollsToReachTheRest() {
+        let hours = SampleData.hours(count: 120)
+        let pph = MeteogramModel.pxPerHour(viewportWidth: 390, days: 2)
+        let m = model(hours, pph: pph)
+        #expect(m.hours.count == 120)                 // all five days are kept
+        #expect(m.width > 390 * 2.4)                  // ~2.5 viewports wide
+        // the two selected days occupy exactly one viewport
+        #expect(abs((m.hourX(47) + pph / 2 + ChartPad.right) - 390) < 1e-9)
+    }
+
+    @Test func zoomingOutThinsHourLabelsAndWindArrows() {
+        func stride(_ pph: Double) -> (Int, Int) { let m = model([hour(0)], pph: pph); return (m.hourLabelStride, m.windArrowInterval) }
+        #expect(stride(15.75) == (3, 3))     // 1 day
+        #expect(stride(10) == (3, 3))
+        #expect(stride(7.875) == (6, 3))     // 2 days
+        #expect(stride(5.25) == (6, 6))      // 3 days
+        #expect(stride(3.15) == (12, 6))     // 5 days
+        #expect(stride(1.2) == (24, 15))
     }
 
     @Test func widthIncludesPadding() {
@@ -132,6 +157,11 @@ private func model(_ hours: [Hour], pph: Double = 8, now: Date = SampleData.refe
         #expect(m.hourLabelStride == 3)
         #expect(m.hourLabels.map(\.text) == ["12am", "3am", "6am", "9am", "12pm", "3pm", "6pm", "9pm"])
         #expect(m.hourLabels.map(\.index) == [0, 3, 6, 9, 12, 15, 18, 21])
+    }
+
+    @Test func hourLabelsOnlyNoonAndMidnightWhenFiveDaysFitOnAPhone() {
+        let m = model((0..<48).map { hour($0) }, pph: 3.15)
+        #expect(m.hourLabels.map(\.text) == ["12am", "12pm", "12am", "12pm"])
     }
 
     @Test func hourLabelsEverySixHoursOnNarrowCharts() {

@@ -37,6 +37,15 @@ import UniformTypeIdentifiers
         try save(image, named: "dashboard-christchurch")
     }
 
+    @Test func rendersChartZoomLevels() throws {
+        // The selected days fill the viewport: 5 = whole forecast visible, 2 = scroll for the rest.
+        for days in [5, 2] {
+            var state = DashboardState.sample
+            state.chartDays = days
+            try save(try render(state), named: "dashboard-\(days)day-zoom")
+        }
+    }
+
     @Test func rendersInlandLocationWithoutTides() throws {
         var state = DashboardState.sample
         state.location = .named("hamilton")

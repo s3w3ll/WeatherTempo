@@ -8,8 +8,9 @@ public struct MeteogramModel: Equatable {
     public typealias Hour = WeatherPayload.Hour
 
     public static let nzTimeZone = TimeZone(identifier: "Pacific/Auckland")!
-    /// chart.js never goes below 8 px per hour, so long ranges scroll instead of cramming.
-    public static let minPxPerHour: Double = 8
+    /// Sanity floor only. The selected number of days always fills the viewport (5 days on a
+    /// phone is ~3 px/hour), so the web chart's 8 px minimum no longer applies.
+    public static let minPxPerHour: Double = 2
 
     public let hours: [Hour]
     public let pxPerHour: Double
@@ -27,7 +28,8 @@ public struct MeteogramModel: Equatable {
 
     private let calendar: Calendar
 
-    /// px/hour so that `days` days exactly fill `viewportWidth` (`_setup()` in chart.js).
+    /// px/hour so that `days` days exactly fill `viewportWidth`. The chart itself always holds
+    /// the whole forecast; whatever doesn't fit is reached by scrolling.
     public static func pxPerHour(viewportWidth: Double, days: Int) -> Double {
         max(minPxPerHour, (viewportWidth - ChartPad.left - ChartPad.right) / Double(max(1, days) * 24))
     }
@@ -156,11 +158,16 @@ public struct MeteogramModel: Equatable {
         public let text: String
     }
 
-    /// chart.js labels every 3rd hour, but at the 8 px/hour phone width that puts labels
-    /// 24 px apart and "9am12pm" runs together. Space labels at least ~30 px apart.
-    public var hourLabelStride: Int { pxPerHour * 3 >= 30 ? 3 : 6 }
+    /// chart.js labels every 3rd hour, which only works at 10+ px/hour. When zoomed out
+    /// (5 days on a phone is ~3 px/hour) labels thin to every 6th, 12th or 24th hour so
+    /// they stay at least ~30 px apart instead of running together.
+    public var hourLabelStride: Int { [3, 6, 12].first { pxPerHour * Double($0) >= 30 } ?? 24 }
 
-    /// "12am 3am 6am ..." every third (or, when narrow, sixth) local hour.
+    /// Wind arrows every 3 hours when there is room; spaced out in multiples of 3 hours when
+    /// zoomed out so neighbouring arrows (~10 px wide) don't overprint.
+    public var windArrowInterval: Int { max(1, Int((18 / pxPerHour / 3).rounded(.up))) * 3 }
+
+    /// "12am 3am 6am ..." at `hourLabelStride` hour spacing.
     public var hourLabels: [HourLabel] {
         let stride = hourLabelStride
         return hours.enumerated().compactMap { i, h in
