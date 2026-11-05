@@ -4,7 +4,7 @@ import SwiftUI
 /// the weather glyph, high/low and a temperature-range bar on a shared scale. A frame shows
 /// which part the chart below is showing; tapping a day scrolls the chart there.
 struct WeekOverviewStrip: View {
-    static let height: Double = 64
+    static let height: Double = 76
 
     let model: MeteogramModel
     /// The visible part of the chart, as fractions of all hours.
@@ -47,7 +47,7 @@ struct WeekOverviewStrip: View {
 
     private func column(_ day: MeteogramModel.WeekDay, range: ClosedRange<Double>?, width: Double) -> some View {
         let roomy = width >= 44
-        return VStack(spacing: 2) {
+        return VStack(spacing: 1) {
             Text(roomy ? day.label : String(day.label.prefix(1)))
                 .font(.caption2.weight(.semibold)).foregroundStyle(Theme.muted)
             Text(day.glyph).font(.system(size: 14))
@@ -56,13 +56,14 @@ struct WeekOverviewStrip: View {
                     .font(.caption2.weight(.semibold)).foregroundStyle(Theme.warmText)
             }
             rangeBar(day, range: range)
-                .frame(width: max(4, min(width - 10, 26)), height: 14)
+                .frame(width: max(4, min(width - 10, 26)), height: 22)
             if roomy {
                 Text(NumberFormat.rounded(day.low, suffix: "°"))
                     .font(.caption2).foregroundStyle(Theme.cyanText)
             }
         }
         .lineLimit(1)
+        .padding(.vertical, 4)
         .frame(width: width, height: Self.height)
         .contentShape(Rectangle())
     }
@@ -104,9 +105,16 @@ struct PressureTrendStrip: View {
     var body: some View {
         Canvas { ctx, size in
             let pph = model.pxPerHour
-            for (i, t) in model.pressureTendencies.enumerated() {
-                guard let t else { continue }
-                let rect = CGRect(x: ChartPad.left + Double(i) * pph, y: 2, width: pph + 0.5, height: size.height - 4)
+            // Merge neighbouring hours with the same band into one rectangle: per-hour
+            // translucent cells show seams where they meet.
+            let tendencies = model.pressureTendencies
+            var i = 0
+            while i < tendencies.count {
+                guard let t = tendencies[i] else { i += 1; continue }
+                let start = i
+                while i < tendencies.count, let u = tendencies[i], u.direction == t.direction, u.strength == t.strength { i += 1 }
+                let rect = CGRect(x: ChartPad.left + Double(start) * pph, y: 2,
+                                  width: Double(i - start) * pph, height: size.height - 4)
                 let color: Color = switch t.direction {
                 case .rising: Self.rising.color.opacity([0.10, 0.22, 0.45, 0.75][t.strength])
                 case .falling: Self.falling.color.opacity([0.10, 0.22, 0.45, 0.75][t.strength])
