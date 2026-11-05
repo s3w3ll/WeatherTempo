@@ -106,7 +106,7 @@ public enum WarningNotifications {
         // Forget long-gone warnings first, then cap.
         let cutoff = now.addingTimeInterval(-7 * 86_400)
         mem = mem.filter { $0.expires.map { $0 > cutoff } ?? true }
-        return (notices, Array(mem.suffix(memory)))
+        return (notices, Array(mem.suffix(Self.memory)))
     }
 
     // MARK: Store
