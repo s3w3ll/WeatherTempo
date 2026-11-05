@@ -231,8 +231,17 @@ struct HourDetailStrip: View {
                     }
                 }
             } else {
+                // Nothing selected: use the space for what's coming up.
+                if let summary = model.nextHoursSummary() {
+                    Text("Next \(MeteogramModel.nextHoursWindow) hours").font(.caption.bold())
+                    Text(summary)
+                        .font(.footnote).foregroundStyle(Theme.text)
+                        .lineLimit(3).minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
                 Text("Tap or press and drag on the chart to inspect an hour")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
             }
         }
         .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .topLeading)
