@@ -33,6 +33,8 @@ public struct ChartLayout: Equatable, Sendable {
     public var dayAxisTop: Double
     public var height: Double
     public var showDayAxis: Bool
+    /// UV and dew point curves. Off in widgets, where the chart is too small for them.
+    public var detailedLayers: Bool
 
     /// The dashboard chart: exactly chart.js's `ZONE` (364 px, 70/15/15).
     public static let web = ChartLayout(
@@ -41,7 +43,7 @@ public struct ChartLayout: Equatable, Sendable {
         windTop: ChartZone.windTop, windBot: ChartZone.windBot,
         precipTop: ChartZone.precipTop, precipBot: ChartZone.precipBot,
         timeTop: ChartZone.timeTop, dayAxisTop: ChartZone.dayAxisTop,
-        height: ChartZone.height, showDayAxis: true)
+        height: ChartZone.height, showDayAxis: true, detailedLayers: true)
 
     /// Widgets: 192 px tall, no day strip (the widget has its own daily row). Labels stay
     /// at their normal 9-11 pt sizes: shrinking the 364 px layout to fit would have made
@@ -52,7 +54,7 @@ public struct ChartLayout: Equatable, Sendable {
         windTop: 116, windBot: 140,
         precipTop: 144, precipBot: 168,
         timeTop: 172, dayAxisTop: 192,
-        height: 192, showDayAxis: false)
+        height: 192, showDayAxis: false, detailedLayers: false)
 }
 
 public enum ChartPad {
@@ -100,6 +102,11 @@ public struct ChartPalette: Sendable {
     public var precipLine: Color
     public var precipShadow: Color
     public var hoverLine: Color
+    public var gustLine: Color
+    public var freezingLine: Color
+    public var dewLine: Color
+    public var uvLine: Color
+    public var uvFill: Color
 
     public static let light = ChartPalette(
         bg:               Color(r: 245, g: 248, b: 252),
@@ -131,7 +138,12 @@ public struct ChartPalette: Sendable {
         precipLine:       Color(r: 60,  g: 150, b: 255, a: 0.85),
         precipShadow:     Color(r: 60,  g: 150, b: 255, a: 0.40),
         // chart.js draws its hover line in white, which vanishes on the light theme.
-        hoverLine:        Color(r: 20,  g: 40,  b: 80,  a: 0.55)
+        hoverLine:        Color(r: 20,  g: 40,  b: 80,  a: 0.55),
+        gustLine:         Color(r: 200, g: 50,  b: 40,  a: 0.55),
+        freezingLine:     Color(r: 40,  g: 110, b: 220, a: 0.55),
+        dewLine:          Color(r: 30,  g: 120, b: 200, a: 0.70),
+        uvLine:           Color(r: 150, g: 70,  b: 200, a: 0.85),
+        uvFill:           Color(r: 150, g: 70,  b: 200, a: 0.10)
     )
 }
 
@@ -166,6 +178,11 @@ extension ChartPalette {
         precipAreaBottom: Color(r: 63,  g: 169, b: 245, a: 0.03),
         precipLine:       Color(r: 127, g: 216, b: 247, a: 0.9),
         precipShadow:     Color(r: 63,  g: 169, b: 245, a: 0.4),
-        hoverLine:        Color(r: 255, g: 255, b: 255, a: 0.6)
+        hoverLine:        Color(r: 255, g: 255, b: 255, a: 0.6),
+        gustLine:         Color(r: 255, g: 150, b: 150, a: 0.65),
+        freezingLine:     Color(r: 160, g: 210, b: 255, a: 0.7),
+        dewLine:          Color(r: 160, g: 210, b: 255, a: 0.7),
+        uvLine:           Color(r: 215, g: 170, b: 255, a: 0.9),
+        uvFill:           Color(r: 215, g: 170, b: 255, a: 0.12)
     )
 }

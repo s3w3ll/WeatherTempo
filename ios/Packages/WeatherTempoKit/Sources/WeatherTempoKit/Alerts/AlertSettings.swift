@@ -20,13 +20,40 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     /// Minutes after local midnight (420 = 7:00am), in the selected location's time zone.
     public var dailyUVMinutes = 7 * 60
 
+    /// Notify ahead of forecast rain.
+    public var rainEnabled = false
+    /// An hour counts as rainy when its chance is at least this (and some rain is forecast).
+    public var rainChance = 50.0
+    /// How long before the rain starts to send the alert.
+    public var rainLeadMinutes = 60
+
     public init() {}
+
+    /// Decodes every field leniently so settings saved by an older build (missing newer
+    /// keys) keep their values instead of resetting everything to defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AlertSettings()
+        tempHighEnabled = try c.decodeIfPresent(Bool.self, forKey: .tempHighEnabled) ?? d.tempHighEnabled
+        tempHigh = try c.decodeIfPresent(Double.self, forKey: .tempHigh) ?? d.tempHigh
+        tempLowEnabled = try c.decodeIfPresent(Bool.self, forKey: .tempLowEnabled) ?? d.tempLowEnabled
+        tempLow = try c.decodeIfPresent(Double.self, forKey: .tempLow) ?? d.tempLow
+        uvEnabled = try c.decodeIfPresent(Bool.self, forKey: .uvEnabled) ?? d.uvEnabled
+        uvThreshold = try c.decodeIfPresent(Double.self, forKey: .uvThreshold) ?? d.uvThreshold
+        dailyUVEnabled = try c.decodeIfPresent(Bool.self, forKey: .dailyUVEnabled) ?? d.dailyUVEnabled
+        dailyUVMinutes = try c.decodeIfPresent(Int.self, forKey: .dailyUVMinutes) ?? d.dailyUVMinutes
+        rainEnabled = try c.decodeIfPresent(Bool.self, forKey: .rainEnabled) ?? d.rainEnabled
+        rainChance = try c.decodeIfPresent(Double.self, forKey: .rainChance) ?? d.rainChance
+        rainLeadMinutes = try c.decodeIfPresent(Int.self, forKey: .rainLeadMinutes) ?? d.rainLeadMinutes
+    }
 
     public static let storeKey = "weatherTempo.alerts"
     public static let tempRange = -10.0...45.0
     public static let uvRange = 1.0...11.0
+    public static let rainChanceRange = 10.0...90.0
+    public static let rainLeadOptions = [30, 60, 120, 180]
 
-    public var anyEnabled: Bool { tempHighEnabled || tempLowEnabled || uvEnabled || dailyUVEnabled }
+    public var anyEnabled: Bool { tempHighEnabled || tempLowEnabled || uvEnabled || dailyUVEnabled || rainEnabled }
 
     /// Clamps hand-edited or corrupt values back into sensible bounds.
     public func sanitized() -> AlertSettings {
@@ -35,6 +62,8 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         s.tempLow = min(max(s.tempLow, Self.tempRange.lowerBound), Self.tempRange.upperBound)
         s.uvThreshold = min(max(s.uvThreshold, Self.uvRange.lowerBound), Self.uvRange.upperBound)
         s.dailyUVMinutes = min(max(s.dailyUVMinutes, 0), 24 * 60 - 1)
+        s.rainChance = min(max(s.rainChance, Self.rainChanceRange.lowerBound), Self.rainChanceRange.upperBound)
+        s.rainLeadMinutes = min(max(s.rainLeadMinutes, 0), 6 * 60)
         return s
     }
 

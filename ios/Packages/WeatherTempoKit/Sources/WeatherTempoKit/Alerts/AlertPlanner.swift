@@ -2,7 +2,7 @@ import Foundation
 
 /// One notification the app wants iOS to deliver.
 public struct PlannedAlert: Equatable, Sendable {
-    public enum Kind: String, Sendable { case tempHigh, tempLow, uv, dailyUV }
+    public enum Kind: String, Sendable { case tempHigh, tempLow, uv, dailyUV, rain }
     public let kind: Kind
     public let fireDate: Date
     public let title: String
@@ -45,6 +45,9 @@ public enum AlertPlanner {
         }
         if s.dailyUVEnabled {
             out += dailyUV(sorted, threshold: s.uvThreshold, minutes: s.dailyUVMinutes, tz: timeZone, now: now, place: locationName)
+        }
+        if s.rainEnabled {
+            out += rain(sorted, chance: s.rainChance, leadMinutes: s.rainLeadMinutes, tz: timeZone, now: now, place: locationName)
         }
         return Array(out.sorted { $0.fireDate < $1.fireDate }.prefix(maxAlerts))
     }
@@ -146,6 +149,49 @@ public enum AlertPlanner {
                                     body: describe(run, threshold: threshold, tz: tz)))
         }
         return out
+    }
+
+    // MARK: Rain
+
+    /// Smallest forecast amount that counts as rain; below this the "rain" is drizzle noise.
+    static let minRainMm = 0.1
+
+    /// One alert `leadMinutes` before each rainy spell. An hour is rainy when its chance is at
+    /// least `chance` and some rain is forecast; spells separated by a single dry hour are
+    /// merged so a brief lull doesn't cause a second alert.
+    static func rain(
+        _ hours: [WeatherPayload.Hour], chance: Double, leadMinutes: Int, tz: TimeZone, now: Date, place: String
+    ) -> [PlannedAlert] {
+        func rainy(_ h: WeatherPayload.Hour) -> Bool {
+            (h.precipChance ?? 0) >= chance && (h.qpf ?? 0) >= minRainMm
+        }
+
+        var spells: [[WeatherPayload.Hour]] = []
+        for h in hours where rainy(h) {
+            if let last = spells.last?.last, h.validTimeUtc - last.validTimeUtc <= 2 * 3600 {
+                spells[spells.count - 1].append(h)
+            } else {
+                spells.append([h])
+            }
+        }
+
+        return spells.compactMap { spell in
+            guard let first = spell.first, let last = spell.last, first.date > now else { return nil }
+            let fire = first.date.addingTimeInterval(-Double(leadMinutes) * 60)
+            guard fire > now else { return nil }          // too late to warn ahead; don't fire "now" on every refresh
+
+            let total = spell.reduce(0) { $0 + ($1.qpf ?? 0) }
+            let peakChance = spell.compactMap(\.precipChance).max() ?? chance
+            let heaviest = spell.compactMap(\.qpf).max()
+            let kind = WeatherInsights.RainIntensity.classify(qpf: heaviest)?.label ?? "Rain"
+            let start = TimeFormat.hour(first.validTimeUtc, in: tz)
+            let end = TimeFormat.hour(last.validTimeUtc + 3600, in: tz)
+            let day = dayPhrase(first.date, now: now, tz: tz)
+            return PlannedAlert(
+                kind: .rain, fireDate: fire,
+                title: "Rain coming in \(place)",
+                body: "\(kind) from \(start) to \(end) \(day), up to \(Int(peakChance.rounded()))% chance, about \(NumberFormat.trimmed((total * 10).rounded() / 10)) mm.")
+        }
     }
 
     // MARK: Wording

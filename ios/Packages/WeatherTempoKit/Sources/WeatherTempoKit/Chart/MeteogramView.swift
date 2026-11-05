@@ -195,18 +195,25 @@ struct HourDetailStrip: View {
     }
 }
 
-/// "Temperature · Feels like · Wind · Precipitation · Pressure", colours from the palette.
+/// The chart key in two rows (main zone, then wind/precip/pressure), colours from the palette.
 public struct MeteogramLegend: View {
     public init() {}
 
     public var body: some View {
         let p = ChartPalette.light
-        HStack(spacing: 12) {
-            item("Temperature", p.tempLine, dashed: false)
-            item("Feels like", p.feelsLine, dashed: true)
-            item("Wind", p.windArrow, dashed: false)
-            item("Precip", p.precipLine, dashed: false)
-            item("Pressure", p.pressLine, dashed: true)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                item("Temperature", p.tempLine, dashed: false)
+                item("Feels like", p.feelsLine, dashed: true)
+                item("Dew point", p.dewLine, dashed: true)
+                item("UV", p.uvLine, dashed: false)
+            }
+            HStack(spacing: 12) {
+                item("Wind", p.windArrow, dashed: false)
+                item("Gusts", p.gustLine, dashed: true)
+                item("Precip", p.precipLine, dashed: false)
+                item("Pressure", p.pressLine, dashed: true)
+            }
         }
         .scaledFont(10, relativeTo: .caption)
         .foregroundStyle(.secondary)

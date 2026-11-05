@@ -52,6 +52,24 @@ public struct AlertSettingsView: View {
                     Text("The daily summary only arrives on days UV is forecast to reach the level, and says when.")
                 }
 
+                Section {
+                    Toggle("Rain alerts", isOn: $coordinator.settings.rainEnabled)
+                    if coordinator.settings.rainEnabled {
+                        Stepper(value: $coordinator.settings.rainChance, in: AlertSettings.rainChanceRange, step: 10) {
+                            Text("When chance is \(Int(coordinator.settings.rainChance))% or more")
+                        }
+                        Picker("Warn me", selection: $coordinator.settings.rainLeadMinutes) {
+                            ForEach(AlertSettings.rainLeadOptions, id: \.self) { m in
+                                Text(m < 60 ? "\(m) min before" : "\(m / 60) h before").tag(m)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Rain")
+                } footer: {
+                    Text("From the hourly forecast, not radar, so start times are to the nearest hour.")
+                }
+
                 if !coordinator.planned.isEmpty {
                     Section("Scheduled") {
                         ForEach(Array(coordinator.planned.prefix(6)), id: \.id) { alert in

@@ -232,3 +232,63 @@ private final class FakeScheduler: NotificationScheduling, @unchecked Sendable {
         #expect(coordinator.planned.isEmpty)
     }
 }
+
+@Suite struct RainAlertTests {
+    /// Rainy hours at the given indices (chance 70 %, 1.2 mm), dry elsewhere.
+    private func wet(_ rainy: Set<Int>, count: Int = 48, chance: Double = 70, mm: Double = 1.2) -> [WeatherPayload.Hour] {
+        (0..<count).map { i in
+            WeatherPayload.Hour(validTimeUtc: day0 + Double(i) * 3600, temperature: 12,
+                                qpf: rainy.contains(i) ? mm : 0, precipChance: rainy.contains(i) ? chance : 5)
+        }
+    }
+
+    private func settings(chance: Double = 50, lead: Int = 60) -> AlertSettings {
+        var s = AlertSettings(); s.rainEnabled = true; s.rainChance = chance; s.rainLeadMinutes = lead; return s
+    }
+
+    @Test func warnsAheadOfEachSpell() throws {
+        let alerts = plan(wet([15, 16, 17, 30]), settings())
+        #expect(alerts.count == 2 && alerts.allSatisfy { $0.kind == .rain })
+        let first = try #require(alerts.first)
+        #expect(first.fireDate.timeIntervalSince1970 == day0 + 14 * 3600)          // 1 h before 3pm
+        #expect(first.title == "Rain coming in Christchurch")
+        #expect(first.body == "Moderate rain from 3pm to 6pm today, up to 70% chance, about 3.6 mm.")
+        #expect(alerts[1].body.contains("tomorrow"))
+    }
+
+    @Test func aSingleDryHourDoesNotSplitASpell() {
+        #expect(plan(wet([10, 12]), settings()).count == 1)    // one-hour lull: merged
+        #expect(plan(wet([10, 13]), settings()).count == 2)    // two dry hours: separate
+    }
+
+    @Test func chanceThresholdAndMinimumAmountBothApply() {
+        #expect(plan(wet([10], chance: 40), settings(chance: 50)).isEmpty)
+        #expect(plan(wet([10], chance: 50), settings(chance: 50)).count == 1)   // inclusive
+        #expect(plan(wet([10], mm: 0.05), settings()).isEmpty)                  // drizzle noise
+    }
+
+    @Test func leadTimeIsHonoured() throws {
+        let a = try #require(plan(wet([10]), settings(lead: 180)).first)
+        #expect(a.fireDate.timeIntervalSince1970 == day0 + 7 * 3600)
+    }
+
+    @Test func noAlertWhenItIsTooLateToWarnAhead() {
+        // rain at 10am, now 9:30am, 60 min lead: the warning time has passed
+        #expect(plan(wet([10]), settings(), now: 9.5).isEmpty)
+        // rain already falling
+        #expect(plan(wet([10, 11]), settings(), now: 10.5).isEmpty)
+    }
+
+    @Test func heavyAndLightRainAreNamed() {
+        #expect(plan(wet([10], mm: 5), settings()).first?.body.hasPrefix("Heavy rain") == true)
+        #expect(plan(wet([10], mm: 0.4), settings()).first?.body.hasPrefix("Light rain") == true)
+    }
+
+    @Test func oldSavedSettingsWithoutRainKeysStillLoad() {
+        // JSON written by the build before rain alerts existed
+        let json = #"{"tempHighEnabled":true,"tempHigh":28,"tempLowEnabled":false,"tempLow":3,"uvEnabled":false,"uvThreshold":4,"dailyUVEnabled":true,"dailyUVMinutes":400}"#
+        let s = AlertSettings.load(from: InMemoryStore([AlertSettings.storeKey: json]))
+        #expect(s.tempHighEnabled && s.tempHigh == 28 && s.uvThreshold == 4 && s.dailyUVMinutes == 400)
+        #expect(!s.rainEnabled && s.rainChance == 50 && s.rainLeadMinutes == 60)
+    }
+}

@@ -14,9 +14,12 @@ public enum MeteogramRenderer {
         guard !m.hours.isEmpty else { return }
         drawBackground(m, &ctx, p)
         drawCloudCover(m, &ctx, p)
+        drawFreezingLine(m, &ctx, p)
+        if m.layout.detailedLayers { drawUV(m, &ctx, p) }
         drawTemperatureArea(m, &ctx, p)
         drawTemperatureLine(m, &ctx, p)
         drawFeelsLikeLine(m, &ctx, p)
+        if m.layout.detailedLayers { drawDewPointLine(m, &ctx, p) }
         drawPressureLine(m, &ctx, p)
         drawWind(m, &ctx, p)
         drawPrecipitation(m, &ctx, p)
@@ -144,6 +147,61 @@ public enum MeteogramRenderer {
         ctx.stroke(path, with: .color(p.feelsLine), style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
     }
 
+    // MARK: Freezing line (native addition)
+
+    /// Dashed 0° line with a small label, only when 0° is inside the plotted range.
+    static func drawFreezingLine(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
+        guard let y = m.freezingY else { return }
+        ctx.stroke(line(CGPoint(x: 0, y: y), CGPoint(x: m.width, y: y)),
+                   with: .color(p.freezingLine), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        label("0°", at: CGPoint(x: 14, y: y - 2), size: 9, bold: true, color: p.freezingLine, &ctx)
+    }
+
+    // MARK: UV curve (native addition)
+
+    /// UV on its own scale in the lower main zone, with the 3+ "sun protection" part filled.
+    static func drawUV(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
+        let floor = m.uvY(0)
+        let protect = m.uvY(3)
+        for run in m.uvRuns {
+            let pts = run.map { CGPoint(x: m.hourX($0), y: m.uvY(m.hours[$0].uvIndex ?? 0)) }
+            guard let first = pts.first, let last = pts.last, pts.count >= 2 else { continue }
+
+            var curve = Path()
+            curve.addSmoothCurve(through: pts)
+
+            // Fill only where UV >= 3: the area under the curve, clipped to above the 3 line.
+            var area = curve
+            area.addLine(to: CGPoint(x: last.x, y: floor))
+            area.addLine(to: CGPoint(x: first.x, y: floor))
+            area.closeSubpath()
+            ctx.drawLayer { layer in
+                layer.clip(to: Path(CGRect(x: first.x, y: 0, width: last.x - first.x, height: protect)))
+                layer.fill(area, with: .color(p.uvFill))
+            }
+            ctx.stroke(curve, with: .color(p.uvLine), style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+
+            // Peak label: "UV 6"
+            if let peak = run.max(by: { (m.hours[$0].uvIndex ?? 0) < (m.hours[$1].uvIndex ?? 0) }),
+               let uv = m.hours[peak].uvIndex, uv >= 1 {
+                label("UV \(Int(uv.rounded()))", at: CGPoint(x: m.hourX(peak), y: m.uvY(uv) - 4),
+                      size: 8, bold: true, color: p.uvLine, &ctx)
+            }
+        }
+    }
+
+    // MARK: Dew point (native addition)
+
+    static func drawDewPointLine(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
+        let pts: [CGPoint] = m.hours.enumerated().compactMap { i, h in
+            MeteogramModel.dewPoint(h).map { CGPoint(x: m.hourX(i), y: m.tempY($0)) }
+        }
+        guard pts.count >= 2 else { return }
+        var path = Path()
+        path.addSmoothCurve(through: pts)
+        ctx.stroke(path, with: .color(p.dewLine), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [0.5, 3.5]))
+    }
+
     // MARK: 6. Pressure  (_drawPressureLine)
 
     static func drawPressureLine(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
@@ -170,6 +228,16 @@ public enum MeteogramRenderer {
         area.closeSubpath()
         ctx.fill(area, with: verticalGradient(
             [(0, p.windFillTop), (1, p.windFillBottom)], from: m.layout.windTop, to: m.layout.windBot))
+
+        // Pass 1b: gusts, a thin dashed line above the speed curve (clamped to the zone like speed)
+        let gustPts: [CGPoint] = m.hours.enumerated().compactMap { i, h in
+            h.windGust.map { CGPoint(x: m.hourX(i), y: m.windY($0)) }
+        }
+        if gustPts.count >= 2 {
+            var gusts = Path()
+            gusts.addSmoothCurve(through: gustPts)
+            ctx.stroke(gusts, with: .color(p.gustLine), style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+        }
 
         // Pass 2: speed line with a soft glow
         var curve = Path()

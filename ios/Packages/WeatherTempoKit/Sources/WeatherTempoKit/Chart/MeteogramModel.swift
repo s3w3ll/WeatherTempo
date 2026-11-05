@@ -50,8 +50,9 @@ public struct MeteogramModel: Equatable {
         cal.timeZone = timeZone
         self.calendar = cal
 
-        // Temperature range spans temp *and* feels-like, padded by 2 degrees.
+        // Temperature range spans temp, feels-like and dew point (all share the scale), padded by 2 degrees.
         let temps = hours.compactMap(\.temperature) + hours.compactMap(\.temperatureFeelsLike)
+            + (layout.detailedLayers ? hours.compactMap { Self.dewPoint($0) } : [])
         tMin = (temps.min() ?? 8) - 2
         tMax = (temps.max() ?? 18) + 2
 
@@ -101,6 +102,66 @@ public struct MeteogramModel: Equatable {
         guard !hours.isEmpty else { return 0 }
         let raw = ((x - ChartPad.left - pxPerHour / 2) / pxPerHour).rounded()
         return min(max(Int(raw), 0), hours.count - 1)
+    }
+
+    // MARK: Freezing line
+
+    /// y of the 0° line, or nil when 0° is outside the plotted range.
+    public var freezingY: Double? {
+        (tMin...tMax).contains(0) ? tempY(0) : nil
+    }
+
+    // MARK: Dew point
+
+    /// Magnus formula (Alduchov-Eskridge constants), good to ~0.1° in weather ranges.
+    public static func dewPoint(temperature t: Double, humidity rh: Double) -> Double? {
+        guard rh > 0, rh <= 100 else { return nil }
+        let a = 17.62, b = 243.12
+        let g = log(rh / 100) + a * t / (b + t)
+        return b * g / (a - g)
+    }
+
+    public static func dewPoint(_ h: Hour) -> Double? {
+        guard let t = h.temperature, let rh = h.relativeHumidity else { return nil }
+        return dewPoint(temperature: t, humidity: rh)
+    }
+
+    /// How muggy a dew point feels (the scale the US NWS and Weathergraph use).
+    public enum Comfort: String, Equatable, Sendable {
+        case dry = "Dry", comfortable = "Comfortable", sticky = "Sticky", oppressive = "Oppressive"
+
+        public init(dewPoint d: Double) {
+            switch d {
+            case ..<10: self = .dry
+            case ..<16: self = .comfortable
+            case ..<21: self = .sticky
+            default: self = .oppressive
+            }
+        }
+    }
+
+    // MARK: UV
+
+    /// UV is plotted on its own 0-12 scale across the lower 40 % of the main zone, so the
+    /// curve sits under the temperature line rather than fighting it.
+    public static let maxUV: Double = 12
+
+    public func uvY(_ uv: Double) -> Double {
+        let span = (layout.tempBot - layout.tempTop) * 0.4
+        return layout.tempBot - min(max(uv, 0), Self.maxUV) / Self.maxUV * span
+    }
+
+    /// Daylight stretches with UV above zero; the curve isn't drawn along the floor at night.
+    public var uvRuns: [Range<Int>] {
+        var runs: [Range<Int>] = []
+        var i = 0
+        while i < hours.count {
+            if (hours[i].uvIndex ?? 0) <= 0 { i += 1; continue }
+            let start = max(0, i - 1)                 // include the zero either side so the curve rises from the floor
+            while i < hours.count && (hours[i].uvIndex ?? 0) > 0 { i += 1 }
+            runs.append(start..<min(hours.count, i + 1))
+        }
+        return runs
     }
 
     // MARK: Cloud cover
@@ -281,6 +342,11 @@ public struct MeteogramModel: Equatable {
             return "\(trimmed(s)) km/h \(h.windDirectionCardinal ?? "")".trimmingCharacters(in: .whitespaces)
         }()
 
+        let dew: String = {
+            guard let d = Self.dewPoint(h) else { return "—" }
+            return "\(Int(d.rounded()))° \(Comfort(dewPoint: d).rawValue)"
+        }()
+
         return [
             DetailRow(label: "Temp", value: rounded(h.temperature, "°")),
             DetailRow(label: "Feels like", value: rounded(h.temperatureFeelsLike, "°")),
@@ -293,6 +359,7 @@ public struct MeteogramModel: Equatable {
             DetailRow(label: "Pressure", value: rounded(h.pressureMeanSeaLevel, " hPa")),
             DetailRow(label: "UV index", value: h.uvIndex.map { trimmed($0) } ?? "—"),
             DetailRow(label: "Cloud cover", value: plain(h.cloudCover, "%")),
+            DetailRow(label: "Dew point", value: dew),
         ]
     }
 }
