@@ -53,6 +53,8 @@ public struct MeteogramView: View {
     private let now: Date
 
     @State private var selected: Int?
+    /// Current horizontal scroll position of the chart (nil until first reported).
+    @State private var scrollX: Double?
     @Environment(\.staticRender) private var staticRender
 
     public init(
@@ -67,6 +69,11 @@ public struct MeteogramView: View {
         self.now = now
     }
 
+    /// Everything inside the GeometryReader: week strip, detail strip, chart, pressure strip.
+    static var contentHeight: Double {
+        WeekOverviewStrip.height + 8 + HourDetailStrip.height + 8 + ChartZone.height + 2 + PressureTrendStrip.height
+    }
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             GeometryReader { geo in
@@ -76,8 +83,7 @@ public struct MeteogramView: View {
                     now: now, timeZone: timeZone)
                 chart(model, viewport: geo.size.width)
             }
-            // The GeometryReader's content is the detail strip + spacing + the chart itself.
-            .frame(height: HourDetailStrip.height + 8 + ChartZone.height)
+            .frame(height: Self.contentHeight)
 
             MeteogramLegend()
         }
@@ -85,54 +91,87 @@ public struct MeteogramView: View {
 
     @ViewBuilder
     private func chart(_ model: MeteogramModel, viewport: Double) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HourDetailStrip(model: model, index: selected)
-
-            if staticRender {
-                // Image rendering: show the window a user would see on first appearance
-                // ("now" 30 % in from the left) instead of a ScrollView.
-                let scrollX = max(0, model.hourX(model.nowIndex) - viewport * 0.3)
-                MeteogramCanvas(model: model)
-                    .accessibilityHidden(true)
-                    .offset(x: -scrollX)
-                    .frame(width: viewport, height: model.height, alignment: .leading)
-                    .clipped()
-            } else {
+        if staticRender {
+            // Image rendering: show the window a user would see on first appearance
+            // ("now" 30 % in from the left) instead of a ScrollView.
+            let scrollX = model.initialScrollX(viewport: viewport)
+            VStack(alignment: .leading, spacing: 8) {
+                WeekOverviewStrip(model: model, visible: model.visibleFraction(scrollX: scrollX, viewport: viewport))
+                HourDetailStrip(model: model, index: selected)
+                VStack(alignment: .leading, spacing: 2) {
+                    MeteogramCanvas(model: model)
+                    PressureTrendStrip(model: model)
+                }
+                .accessibilityHidden(true)
+                .offset(x: -scrollX)
+                .frame(width: viewport, height: model.height + 2 + PressureTrendStrip.height, alignment: .leading)
+                .clipped()
+            }
+        } else {
             ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    ZStack(alignment: .topLeading) {
-                        MeteogramCanvas(model: model).equatable()
-                        MeteogramHoverLayer(model: model, index: selected)
-                        // Invisible anchor for scrollToNow
-                        Color.clear.frame(width: 1, height: 1)
-                            .offset(x: model.hourX(model.nowIndex))
-                            .id("now")
-                    }
-                    .frame(width: model.width, height: model.height)
-                    .contentShape(Rectangle())
-                    .simultaneousGesture(tapGesture(model))
-                    .gesture(scrubGesture(model))
-                    // A canvas has no accessible structure: describe it, and let VoiceOver
-                    // step through the hours with swipe up / down.
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(model.accessibilitySummary)
-                    .accessibilityValue(selected.map { model.spokenDetail(for: $0) } ?? "")
-                    .accessibilityAdjustableAction { direction in
-                        let last = model.hours.count - 1
-                        guard last >= 0 else { return }
-                        let from = selected ?? model.nowIndex
-                        switch direction {
-                        case .increment: select(min(last, selected == nil ? from : from + 1))
-                        case .decrement: select(max(0, selected == nil ? from : from - 1))
-                        @unknown default: break
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    WeekOverviewStrip(
+                        model: model,
+                        visible: model.visibleFraction(scrollX: scrollX ?? model.initialScrollX(viewport: viewport), viewport: viewport),
+                        onSelectDay: { day in
+                            withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo("day-\(day.startIndex)", anchor: .leading) }
+                        })
+                    HourDetailStrip(model: model, index: selected)
+                    scroller(model)
                 }
                 .onAppear { proxy.scrollTo("now", anchor: UnitPoint(x: 0.3, y: 0.5)) }
             }
             .id(days)   // changing the zoom rebuilds the scroll view, which re-anchors on "now"
-            }
         }
+    }
+
+    private func scroller(_ model: MeteogramModel) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 2) {
+                ZStack(alignment: .topLeading) {
+                    MeteogramCanvas(model: model).equatable()
+                    MeteogramHoverLayer(model: model, index: selected)
+                    // Invisible anchors: "now" for the first appearance, one per day for the week strip.
+                    // (padding, not offset: scrollTo uses the layout frame, which offset doesn't move)
+                    Color.clear.frame(width: 1, height: 1)
+                        .id("now")
+                        .padding(.leading, model.hourX(model.nowIndex))
+                    ForEach(model.weekDays) { day in
+                        Color.clear.frame(width: 1, height: 1)
+                            .id("day-\(day.startIndex)")
+                            .padding(.leading, max(0, model.hourX(day.startIndex) - model.pxPerHour / 2))
+                    }
+                }
+                .frame(width: model.width, height: model.height)
+                .contentShape(Rectangle())
+                .simultaneousGesture(tapGesture(model))
+                .gesture(scrubGesture(model))
+                // A canvas has no accessible structure: describe it, and let VoiceOver
+                // step through the hours with swipe up / down.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(model.accessibilitySummary)
+                .accessibilityValue(selected.map { model.spokenDetail(for: $0) } ?? "")
+                .accessibilityAdjustableAction { direction in
+                    let last = model.hours.count - 1
+                    guard last >= 0 else { return }
+                    let from = selected ?? model.nowIndex
+                    switch direction {
+                    case .increment: select(min(last, selected == nil ? from : from + 1))
+                    case .decrement: select(max(0, selected == nil ? from : from - 1))
+                    @unknown default: break
+                    }
+                }
+
+                PressureTrendStrip(model: model)
+            }
+            // Report how far the content has scrolled, for the week strip's frame (iOS 17 has
+            // no scroll-offset API, so read it from the content's frame).
+            .background(GeometryReader { g in
+                Color.clear.preference(key: ChartScrollOffsetKey.self, value: -g.frame(in: .named("chartScroll")).minX)
+            })
+        }
+        .coordinateSpace(name: "chartScroll")
+        .onPreferenceChange(ChartScrollOffsetKey.self) { scrollX = $0 }
     }
 
     // MARK: Gestures
@@ -162,6 +201,11 @@ public struct MeteogramView: View {
         if i != nil { UISelectionFeedbackGenerator().selectionChanged() }
         #endif
     }
+}
+
+private struct ChartScrollOffsetKey: PreferenceKey {
+    static let defaultValue: Double = 0
+    static func reduce(value: inout Double, nextValue: () -> Double) { value = nextValue() }
 }
 
 /// The hover tooltip's content, pinned above the chart.
