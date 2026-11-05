@@ -4,7 +4,7 @@ import SwiftUI
 /// the weather glyph, high/low and a temperature-range bar on a shared scale. A frame shows
 /// which part the chart below is showing; tapping a day scrolls the chart there.
 struct WeekOverviewStrip: View {
-    static let height: Double = 76
+    static let height: Double = 90
 
     let model: MeteogramModel
     /// The visible part of the chart, as fractions of all hours.
@@ -60,6 +60,8 @@ struct WeekOverviewStrip: View {
             if roomy {
                 Text(NumberFormat.rounded(day.low, suffix: "°"))
                     .font(.caption2).foregroundStyle(Theme.cyanText)
+                Text("☀︎\(Self.sunHours(day.sunshineHours))")
+                    .font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.muted)
             }
         }
         .lineLimit(1)
@@ -83,8 +85,16 @@ struct WeekOverviewStrip: View {
         }
     }
 
+    /// "6h"; a trace of sun shows as "<1h" rather than rounding away to nothing.
+    static func sunHours(_ h: Double) -> String {
+        h > 0 && h < 0.5 ? "<1h" : "\(Int(h.rounded()))h"
+    }
+
     private func accessibility(_ d: MeteogramModel.WeekDay) -> String {
         var s = d.label
+        let sun = Int(d.sunshineHours.rounded())
+        s += sun == 0 ? (d.sunshineHours > 0 ? ", little sunshine" : ", no sunshine")
+            : ", about \(sun) hour\(sun == 1 ? "" : "s") of sunshine"
         if let h = d.high { s += ", high \(Int(h.rounded())) degrees" }
         if let l = d.low { s += ", low \(Int(l.rounded())) degrees" }
         if let c = d.maxChance, c >= 20 { s += ", \(Int(c.rounded())) percent chance of rain" }

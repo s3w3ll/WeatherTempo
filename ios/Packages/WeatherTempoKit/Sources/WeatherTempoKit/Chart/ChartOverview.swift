@@ -19,6 +19,8 @@ extension MeteogramModel {
         public let high: Double?
         public let maxChance: Double?
         public let totalMm: Double
+        /// Sum of each hour's `sunshine` (0...1): a clear daylight hour adds 1, a half-cloudy one 0.5.
+        public let sunshineHours: Double
 
         public var hourCount: Int { endIndex - startIndex }
     }
@@ -29,6 +31,7 @@ extension MeteogramModel {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_NZ"); f.timeZone = timeZone; f.dateFormat = "EEE"
         var cal = Calendar(identifier: .gregorian); cal.timeZone = timeZone
+        let sun = sunshine
 
         return (0..<(bounds.count - 1)).map { b in
             let range = bounds[b]..<bounds[b + 1]
@@ -42,7 +45,8 @@ extension MeteogramModel {
                 glyph: WeatherGlyph.emoji(iconCode: iconHour.iconCode, dayOrNight: iconHour.dayOrNight),
                 low: temps.min(), high: temps.max(),
                 maxChance: slice.compactMap(\.precipChance).max(),
-                totalMm: slice.reduce(0) { $0 + ($1.qpf ?? 0) })
+                totalMm: slice.reduce(0) { $0 + ($1.qpf ?? 0) },
+                sunshineHours: sun[range].reduce(0, +))
         }
     }
 

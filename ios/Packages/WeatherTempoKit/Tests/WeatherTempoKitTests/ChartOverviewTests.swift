@@ -37,6 +37,24 @@ private func model(_ hs: [Hour], pph: Double = 8) -> MeteogramModel {
         #expect(d.maxChance == 46)
     }
 
+    @Test func sunshineHoursSumEachDaysClearDaylight() throws {
+        // Day 1: 10 clear daylight hours + 4 half-cloudy ones; day 2: overcast all day.
+        let hs = (0..<48).map { i -> Hour in
+            let hod = i % 24
+            let day = (6..<20).contains(hod)
+            let cloud: Double = i >= 24 ? 100 : (hod < 16 ? 0 : 50)
+            return Hour(validTimeUtc: t0 + Double(i) * 3600, temperature: 10, cloudCover: cloud, dayOrNight: day ? "D" : "N")
+        }
+        let days = model(hs).weekDays
+        #expect(days.map(\.sunshineHours) == [12, 0])
+    }
+
+    @Test func sunHoursLabelKeepsATraceOfSun() {
+        #expect(WeekOverviewStrip.sunHours(0) == "0h")
+        #expect(WeekOverviewStrip.sunHours(0.3) == "<1h")
+        #expect(WeekOverviewStrip.sunHours(6.6) == "7h")
+    }
+
     @Test func emptySeriesHasNoDays() {
         #expect(model([]).weekDays.isEmpty)
         #expect(model([]).weekTemperatureRange == nil)
