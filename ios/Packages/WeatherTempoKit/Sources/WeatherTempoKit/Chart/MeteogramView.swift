@@ -15,7 +15,7 @@ public struct MeteogramCanvas: View, Equatable {
         self.palette = palette
     }
 
-    public static func == (a: MeteogramCanvas, b: MeteogramCanvas) -> Bool { a.model == b.model }
+    public static func == (a: MeteogramCanvas, b: MeteogramCanvas) -> Bool { a.model == b.model && a.palette == b.palette }
 
     public var body: some View {
         Canvas { context, _ in
@@ -29,10 +29,11 @@ public struct MeteogramCanvas: View, Equatable {
 struct MeteogramHoverLayer: View {
     let model: MeteogramModel
     let index: Int?
+    var palette: ChartPalette = .light
 
     var body: some View {
         Canvas { context, _ in
-            if let index { MeteogramRenderer.drawHover(model, index: index, in: &context) }
+            if let index { MeteogramRenderer.drawHover(model, index: index, in: &context, palette: palette) }
         }
         .frame(width: model.width, height: model.height)
         .allowsHitTesting(false)
@@ -61,6 +62,9 @@ public struct MeteogramView: View {
     /// A request for the chart to scroll so `hour` is at the left edge.
     @State private var scrollRequest: ScrollRequest?
     @Environment(\.staticRender) private var staticRender
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var palette: ChartPalette { .dashboard(colorScheme) }
 
     struct ScrollRequest: Equatable {
         let hour: Int
@@ -122,7 +126,7 @@ public struct MeteogramView: View {
             // Image rendering: show the window a user would see on first appearance
             // ("now" 30 % in from the left) instead of a ScrollView.
             VStack(alignment: .leading, spacing: 2) {
-                MeteogramCanvas(model: model)
+                MeteogramCanvas(model: model, palette: palette)
                 PressureTrendStrip(model: model)
             }
             .accessibilityHidden(true)
@@ -150,8 +154,8 @@ public struct MeteogramView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 2) {
                 ZStack(alignment: .topLeading) {
-                    MeteogramCanvas(model: model).equatable()
-                    MeteogramHoverLayer(model: model, index: selected)
+                    MeteogramCanvas(model: model, palette: palette).equatable()
+                    MeteogramHoverLayer(model: model, index: selected, palette: palette)
                     // Invisible anchors: "now" for the first appearance, one per hour start for
                     // the week strip. (padding, not offset: scrollTo uses the layout frame,
                     // which offset doesn't move)
@@ -240,8 +244,13 @@ private struct ChartScrollOffsetKey: PreferenceKey {
 struct HourDetailStrip: View {
     let model: MeteogramModel
     let index: Int?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
-    private let columns = Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: 3)
+    /// Four across (three rows for the twelve values) keeps the reserved space small; two at
+    /// accessibility text sizes so the values still fit.
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: typeSize.isAccessibilitySize ? 2 : 4)
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {

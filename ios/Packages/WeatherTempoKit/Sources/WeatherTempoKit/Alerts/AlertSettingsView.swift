@@ -70,6 +70,14 @@ public struct AlertSettingsView: View {
                     Text("From the hourly forecast, not radar, so start times are to the nearest hour.")
                 }
 
+                Section {
+                    Toggle("MetService warnings", isOn: $coordinator.settings.warningsEnabled)
+                } header: {
+                    Text("Severe weather")
+                } footer: {
+                    Text("Watches and warnings MetService issues for this location, as soon as the app or a background refresh sees them.")
+                }
+
                 if !coordinator.planned.isEmpty {
                     Section("Scheduled") {
                         ForEach(Array(coordinator.planned.prefix(6)), id: \.id) { alert in
@@ -93,6 +101,9 @@ public struct AlertSettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await coordinator.refreshAuthorization() }
             .onChange(of: coordinator.settings.anyEnabled) { _, on in
+                if on { Task { await coordinator.ensureAuthorized() } }
+            }
+            .onChange(of: coordinator.settings.warningsEnabled) { _, on in
                 if on { Task { await coordinator.ensureAuthorized() } }
             }
         }

@@ -12,6 +12,8 @@ public protocol NotificationScheduling: Sendable {
     func requestAuthorization() async -> Bool
     /// Removes every pending WeatherTempo alert, then schedules exactly `alerts`.
     func replaceAll(with alerts: [PlannedAlert]) async
+    /// Delivers a notification straight away (MetService warnings).
+    func notifyNow(id: String, title: String, body: String) async
 }
 
 /// Local notifications via `UNUserNotificationCenter`. No entitlement or paid account is needed.
@@ -49,6 +51,16 @@ public struct UserNotificationScheduler: NotificationScheduling {
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
             try? await center.add(UNNotificationRequest(identifier: alert.id, content: content, trigger: trigger))
         }
+    }
+
+    public func notifyNow(id: String, title: String, body: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.threadIdentifier = "weathertempo.warning"
+        content.interruptionLevel = .timeSensitive
+        try? await center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
     }
 }
 
@@ -96,6 +108,24 @@ public final class AlertCoordinator {
         }
     }
 
+    /// Call after each warnings fetch: notifies about warnings not seen before (asking for
+    /// permission the first time one arrives).
+    public func warningsUpdated(_ warnings: [WeatherWarning], location: Location) {
+        guard settings.warningsEnabled else { return }
+        let fresh = WarningNotifications.toNotify(warnings, notified: WarningNotifications.notified(in: store))
+        guard !fresh.isEmpty else { return }
+        WarningNotifications.markNotified(fresh, in: store)
+        let scheduler = scheduler
+        let now = clock()
+        Task {
+            await ensureAuthorized()
+            for w in fresh {
+                let c = WarningNotifications.content(w, locationName: location.name, now: now, timeZone: location.timeZone)
+                await scheduler.notifyNow(id: c.id, title: c.title, body: c.body)
+            }
+        }
+    }
+
     /// Call after each fresh forecast.
     public func forecastUpdated(_ payload: WeatherPayload, location: Location) {
         latest = (payload, location)
@@ -129,12 +159,24 @@ public enum AlertBackground {
     public static func refreshAndReplan(
         store: KeyValueStoring = AppGroup.defaults,
         client: WeatherClient = WeatherClient(),
+        warningClient: WarningClient = WarningClient(),
         cache: PayloadCache = .shared(),
         scheduler: NotificationScheduling = UserNotificationScheduler(),
         now: Date = Date()
     ) async {
         let settings = AlertSettings.load(from: store)
         let location = Location.named(store.loadString(DashboardModel.locationKey))
+
+        // Warnings first: they matter most and don't depend on the forecast.
+        if settings.warningsEnabled,
+           let warnings = try? await warningClient.warnings(latitude: location.lat, longitude: location.lon, now: now) {
+            let fresh = WarningNotifications.toNotify(warnings, notified: WarningNotifications.notified(in: store))
+            WarningNotifications.markNotified(fresh, in: store)
+            for w in fresh {
+                let c = WarningNotifications.content(w, locationName: location.name, now: now, timeZone: location.timeZone)
+                await scheduler.notifyNow(id: c.id, title: c.title, body: c.body)
+            }
+        }
 
         let payload: WeatherPayload?
         if let fresh = try? await client.fetch(locationID: location.id) {
@@ -150,5 +192,40 @@ public enum AlertBackground {
                                 timeZone: location.timeZone, now: now)
             : []
         await scheduler.replaceAll(with: plan)
+    }
+}
+
+/// Which warnings to notify about, and what the notification says. Each MetService alert id
+/// is notified once (an update gets a new id, so an upgraded warning notifies again).
+public enum WarningNotifications {
+    static let storeKey = "weatherTempo.notifiedWarnings"
+    static let idPrefix = "weathertempo.warning."
+    /// Ids remembered; old ones drop off (MetService ids are never reused).
+    static let memory = 100
+
+    public static func toNotify(_ warnings: [WeatherWarning], notified: [String]) -> [WeatherWarning] {
+        let seen = Set(notified)
+        return warnings.filter { !seen.contains($0.id) }
+    }
+
+    static func notified(in store: KeyValueStoring) -> [String] {
+        guard let json = store.loadString(storeKey), let data = json.data(using: .utf8),
+              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return ids
+    }
+
+    static func markNotified(_ warnings: [WeatherWarning], in store: KeyValueStoring) {
+        guard !warnings.isEmpty else { return }
+        let ids = Array((notified(in: store) + warnings.map(\.id)).suffix(memory))
+        if let data = try? JSONEncoder().encode(ids), let json = String(data: data, encoding: .utf8) {
+            store.saveString(json, for: storeKey)
+        }
+    }
+
+    public static func content(_ w: WeatherWarning, locationName: String, now: Date, timeZone: TimeZone)
+        -> (id: String, title: String, body: String) {
+        (idPrefix + w.id,
+         "\(w.headline) – \(locationName)",
+         "\(w.timing(now: now, timeZone: timeZone)). \(w.summary)")
     }
 }

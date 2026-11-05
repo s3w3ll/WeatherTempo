@@ -1,5 +1,8 @@
 import Foundation
 import ImageIO
+#if canImport(AppKit)
+import AppKit
+#endif
 import SwiftUI
 import Testing
 import UniformTypeIdentifiers
@@ -57,6 +60,36 @@ import UniformTypeIdentifiers
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         try save(try #require(renderer.cgImage), named: "dashboard-accessibility1")
+    }
+
+    @Test func rendersMetServiceWarnings() throws {
+        var state = DashboardState.sample
+        state.warnings = [
+            try #require(CAPParser.warning(capXML(id: "snap-orange"))),
+            try #require(CAPParser.warning(capXML(id: "snap-yellow", headline: "Strong Wind Watch", colour: "Yellow",
+                                                  area: "Canterbury High Country"))),
+        ]
+        try save(try render(state), named: "dashboard-warnings")
+    }
+
+    @Test func rendersInDarkMode() throws {
+        let view = DashboardContent(state: .sample)
+            .frame(width: 390)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(DashboardBackground())
+            .environment(\.staticRender, true)
+            .environment(\.colorScheme, .dark)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        // The theme's colours are platform dynamic colours; on the Mac test host they follow
+        // the drawing appearance, so render under the dark one.
+        var image: CGImage?
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+        NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { image = renderer.cgImage }
+        #else
+        image = renderer.cgImage
+        #endif
+        try save(try #require(image), named: "dashboard-dark")
     }
 
     @Test func rendersInlandLocationWithoutTides() throws {

@@ -31,15 +31,19 @@ public struct DashboardState {
     public var now: Date
     public var chartDays: Int
     public var isRefreshing: Bool
+    /// MetService watches and warnings covering `location`, most severe first.
+    public var warnings: [WeatherWarning]
 
     public init(location: Location, payload: WeatherPayload?, banner: StatusBanner? = nil,
-                now: Date = Date(), chartDays: Int = 3, isRefreshing: Bool = false) {
+                now: Date = Date(), chartDays: Int = 3, isRefreshing: Bool = false,
+                warnings: [WeatherWarning] = []) {
         self.location = location
         self.payload = payload
         self.banner = banner
         self.now = now
         self.chartDays = chartDays
         self.isRefreshing = isRefreshing
+        self.warnings = warnings
     }
 
     public static let sample = DashboardState(
@@ -65,9 +69,12 @@ public final class DashboardModel {
     public private(set) var chartDays: Int
     public private(set) var payload: WeatherPayload?
     public private(set) var lastRefreshFailed = false
+    /// MetService alerts for the current location (kept when a warnings fetch fails).
+    public private(set) var warnings: [WeatherWarning] = []
     private var inFlight = 0
 
     @ObservationIgnored private let client: WeatherClient
+    @ObservationIgnored private let warningClient: WarningClient
     @ObservationIgnored private let cache: PayloadCache
     @ObservationIgnored private let store: KeyValueStoring
     @ObservationIgnored private let clock: () -> Date
@@ -75,14 +82,18 @@ public final class DashboardModel {
     @ObservationIgnored private var generation = 0
     /// Called after every successful refresh (the alert planner hangs off this).
     @ObservationIgnored public var onFreshPayload: ((WeatherPayload, Location) -> Void)?
+    /// Called after every successful warnings fetch (new warnings become notifications).
+    @ObservationIgnored public var onWarnings: (([WeatherWarning], Location) -> Void)?
 
     public init(
         client: WeatherClient = WeatherClient(),
+        warningClient: WarningClient = WarningClient(),
         cache: PayloadCache = .shared(),
         store: KeyValueStoring = AppGroup.defaults,
         clock: @escaping () -> Date = { Date() }
     ) {
         self.client = client
+        self.warningClient = warningClient
         self.cache = cache
         self.store = store
         self.clock = clock
@@ -102,7 +113,8 @@ public final class DashboardModel {
         DashboardState(location: location, payload: payload,
                        banner: StatusPolicy.banner(payload: payload, lastRefreshFailed: lastRefreshFailed,
                                                    now: now, timeZone: location.timeZone),
-                       now: now, chartDays: chartDays, isRefreshing: isRefreshing)
+                       now: now, chartDays: chartDays, isRefreshing: isRefreshing,
+                       warnings: warnings.filter { $0.isCurrent(at: now) })
     }
 
     // MARK: Lifecycle
@@ -127,6 +139,11 @@ public final class DashboardModel {
         inFlight += 1
         defer { inFlight -= 1 }
 
+        // Warnings come from MetService, independent of the forecast: fetch alongside it.
+        let warningClient = warningClient
+        let now = clock()
+        async let fetchedWarnings = try? warningClient.warnings(latitude: target.lat, longitude: target.lon, now: now)
+
         do {
             let fresh = try await client.fetch(locationID: target.id)
             guard gen == generation else { return }          // user switched location meanwhile
@@ -141,6 +158,11 @@ public final class DashboardModel {
             guard gen == generation else { return }
             lastRefreshFailed = true
         }
+
+        if let fresh = await fetchedWarnings, gen == generation {
+            warnings = fresh
+            onWarnings?(fresh, target)
+        }
     }
 
     // MARK: Settings
@@ -151,6 +173,7 @@ public final class DashboardModel {
         location = newLocation
         store.saveString(newLocation.id, for: Self.locationKey)
         payload = cache.load(locationID: newLocation.id)    // may be nil: the view shows a loading state
+        warnings = []
         lastRefreshFailed = false
         reloadWidgets()
         await refresh()

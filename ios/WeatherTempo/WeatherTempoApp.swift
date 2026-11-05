@@ -21,6 +21,8 @@ struct WeatherTempoApp: App {
         let alerts = AlertCoordinator()
         // Every fresh forecast reschedules the temperature / UV notifications.
         model.onFreshPayload = { payload, location in alerts.forecastUpdated(payload, location: location) }
+        // New MetService watches / warnings for the location become notifications.
+        model.onWarnings = { warnings, location in alerts.warningsUpdated(warnings, location: location) }
         _model = State(initialValue: model)
         _alerts = State(initialValue: alerts)
         UNUserNotificationCenter.current().delegate = Self.notificationDelegate
@@ -29,8 +31,6 @@ struct WeatherTempoApp: App {
     var body: some Scene {
         WindowGroup {
             DashboardView(model: model, alerts: alerts)
-                // The theme's colours are fixed light-mode values; dark mode comes later.
-                .preferredColorScheme(.light)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { Self.scheduleBackgroundRefresh() }

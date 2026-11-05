@@ -201,6 +201,8 @@ private final class FakeScheduler: NotificationScheduling, @unchecked Sendable {
     func authorization() async -> AlertAuthorization { .allowed }
     func requestAuthorization() async -> Bool { true }
     func replaceAll(with alerts: [PlannedAlert]) async { replaced.append(alerts) }
+    var nowIds: [String] = []
+    func notifyNow(id: String, title: String, body: String) async { nowIds.append(id) }
 }
 
 @Suite @MainActor struct AlertCoordinatorTests {

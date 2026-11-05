@@ -73,7 +73,7 @@ extension Color {
 /// Colours used by the chart. `light` is the current web theme (`C` in chart.js plus the
 /// literals scattered through its draw methods). A `dark` palette can be added later
 /// without touching the renderer.
-public struct ChartPalette: Sendable {
+public struct ChartPalette: Sendable, Equatable {
     public var bg: Color
     public var bgDay: Color
     public var bgNight: Color
@@ -196,4 +196,50 @@ extension ChartPalette {
         uvFill:           Color(r: 215, g: 170, b: 255, a: 0.12),
         sunGlow:          Color(r: 255, g: 214, b: 90,  a: 0.28)
     )
+}
+
+extension ChartPalette {
+    /// Dark mode for the dashboard chart: a deep navy plot with the same hues as `light`,
+    /// lifted where they'd sink into the dark (lines, text), toned down where they'd glare
+    /// (the white cloud band, the sunshine glow).
+    public static let dark = ChartPalette(
+        bg:               Color(r: 16,  g: 23,  b: 35),
+        bgDay:            Color(r: 255, g: 210, b: 150, a: 0.06),
+        bgNight:          Color(r: 0,   g: 0,   b: 0,   a: 0.30),
+        bgTwilight:       Color(r: 150, g: 90,  b: 160, a: 0.18),
+        tempFillTop:      Color(r: 255, g: 140, b: 20,  a: 0.30),
+        tempFillBottom:   Color(r: 255, g: 160, b: 30,  a: 0.03),
+        tempLine:         Color(r: 245, g: 140, b: 45),
+        feelsLine:        Color(r: 60,  g: 200, b: 235, a: 0.9),
+        pressLine:        Color(r: 255, g: 255, b: 255, a: 0.35),
+        nowLine:          Color(r: 255, g: 255, b: 255, a: 0.55),
+        nowLabel:         Color(r: 255, g: 255, b: 255, a: 0.85),
+        grid:             Color(r: 255, g: 255, b: 255, a: 0.06),
+        dayDivider:       Color(r: 255, g: 255, b: 255, a: 0.10),
+        zoneSeparator:    Color(r: 255, g: 255, b: 255, a: 0.10),
+        text:             Color(r: 226, g: 232, b: 242),
+        textMuted:        Color(r: 150, g: 170, b: 196),
+        halo:             Color(r: 16,  g: 23,  b: 35,  a: 0.85),
+        cloud:            Color(r: 200, g: 215, b: 235, a: 0.35),
+        dayAxisBackground: Color(r: 255, g: 255, b: 255, a: 0.06),
+        windFillTop:      Color(r: 240, g: 80,  b: 70,  a: 0.25),
+        windFillBottom:   Color(r: 240, g: 80,  b: 70,  a: 0.03),
+        windLine:         Color(r: 255, g: 110, b: 95,  a: 0.75),
+        windShadow:       Color(r: 255, g: 80,  b: 60,  a: 0.35),
+        windArrow:        Color(r: 255, g: 120, b: 100, a: 0.9),
+        precipAreaTop:    Color(r: 80,  g: 165, b: 255, a: 0.28),
+        precipAreaBottom: Color(r: 80,  g: 165, b: 255, a: 0.03),
+        precipLine:       Color(r: 100, g: 180, b: 255, a: 0.9),
+        precipShadow:     Color(r: 60,  g: 150, b: 255, a: 0.4),
+        hoverLine:        Color(r: 255, g: 255, b: 255, a: 0.6),
+        gustLine:         Color(r: 255, g: 130, b: 120, a: 0.6),
+        freezingLine:     Color(r: 110, g: 170, b: 255, a: 0.7),
+        dewLine:          Color(r: 90,  g: 170, b: 240, a: 0.8),
+        uvLine:           Color(r: 190, g: 120, b: 240, a: 0.9),
+        uvFill:           Color(r: 190, g: 120, b: 240, a: 0.14),
+        sunGlow:          Color(r: 255, g: 190, b: 60,  a: 0.22)
+    )
+
+    /// The dashboard chart's palette for a colour scheme.
+    public static func dashboard(_ scheme: ColorScheme) -> ChartPalette { scheme == .dark ? .dark : .light }
 }

@@ -23,6 +23,9 @@ public struct DashboardContent: View {
         VStack(spacing: 14) {
             header
             if let banner = state.banner { StatusBannerView(banner: banner) }
+            if !state.warnings.isEmpty {
+                WarningsCard(warnings: state.warnings, now: state.now, timeZone: state.location.timeZone)
+            }
 
             if let payload = state.payload {
                 let insights = WeatherInsights(payload: payload, now: state.now, timeZone: state.location.timeZone)
@@ -134,8 +137,8 @@ struct StatusBannerView: View {
     private var tint: Color {
         switch banner.level {
         case .info: return Theme.blue
-        case .warning: return Color(r: 133, g: 77, b: 0)
-        case .error: return Color(r: 180, g: 30, b: 55)
+        case .warning: return Theme.amberText
+        case .error: return Theme.redText
         }
     }
 

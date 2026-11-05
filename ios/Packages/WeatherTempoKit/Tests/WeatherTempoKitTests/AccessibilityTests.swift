@@ -32,6 +32,20 @@ private let now = SampleData.referenceNow
         }
     }
 
+    @Test func darkModeTextMeetsAAOnCardsAndPage() {
+        let d = ThemeRGB.Dark.self
+        let pairs: [(String, RGB)] = [
+            ("text", d.text), ("strong", d.strong), ("muted", d.muted), ("fade", d.fade),
+            ("warmText", d.warmText), ("cyanText", d.cyanText), ("redText", d.redText),
+            ("blue", d.blue), ("amberText", d.amberText),
+        ]
+        for (name, c) in pairs {
+            #expect(c.contrast(against: d.card) >= 4.5, "dark \(name) on card is \(c.contrast(against: d.card))")
+            #expect(c.contrast(against: d.page) >= 4.5, "dark \(name) on page is \(c.contrast(against: d.page))")
+        }
+        #expect(t.amberText.contrast(against: t.card) >= 4.5)
+    }
+
     @Test func widgetTextMeetsAAOnEveryStopOfTheSkyGradient() {
         for (stopName, stop) in [("top", t.skyTop), ("mid", t.skyMid), ("bottom", t.skyBottom)] {
             for (textName, c) in [("white", t.skyWhite), ("muted", t.skyMuted), ("cyan", t.skyCyan)] {

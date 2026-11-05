@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// An sRGB colour as plain numbers, so contrast can be computed (and unit-tested) without
 /// going through SwiftUI's opaque `Color`.
@@ -7,6 +12,12 @@ struct RGB: Equatable {
     init(_ r: Double, _ g: Double, _ b: Double) { self.r = r; self.g = g; self.b = b }
 
     var color: Color { Color(r: r, g: g, b: b) }
+
+    #if canImport(UIKit)
+    func platform(_ a: Double) -> UIColor { UIColor(red: r / 255, green: g / 255, blue: b / 255, alpha: a) }
+    #elseif canImport(AppKit)
+    func platform(_ a: Double) -> NSColor { NSColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a) }
+    #endif
 
     /// WCAG relative luminance.
     var luminance: Double {
@@ -51,31 +62,67 @@ enum ThemeRGB {
     static let skyWhite = RGB(255, 255, 255)
     static let skyMuted = RGB(196, 219, 242)
     static let skyCyan = RGB(135, 226, 248)
+    static let amberText = RGB(133, 77, 0)
+
+    /// Dark-mode twins. Text keeps >= 4.5:1 on `Dark.card` (AccessibilityContrastTests).
+    enum Dark {
+        static let page = RGB(13, 19, 30)
+        /// The dark card colour (88 % over `page`), pre-blended.
+        static let card = RGB(24, 32, 46)
+        static let text = RGB(226, 232, 242)
+        static let strong = RGB(245, 248, 252)
+        static let muted = RGB(150, 170, 196)
+        static let fade = RGB(140, 158, 180)
+        static let warmText = RGB(255, 170, 90)
+        static let cyanText = RGB(90, 205, 235)
+        static let redText = RGB(255, 120, 140)
+        static let blue = RGB(110, 160, 255)
+        static let amberText = RGB(255, 190, 90)
+    }
+}
+
+extension Color {
+    /// A colour that follows light / dark mode. Built on the platform's dynamic colours, so
+    /// it resolves wherever SwiftUI draws it (views, Canvas, widgets) without plumbing.
+    static func adaptive(_ light: RGB, _ dark: RGB, lightAlpha: Double = 1, darkAlpha: Double = 1) -> Color {
+        #if canImport(UIKit)
+        return Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark.platform(darkAlpha) : light.platform(lightAlpha) })
+        #elseif canImport(AppKit)
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark.platform(darkAlpha) : light.platform(lightAlpha)
+        })
+        #else
+        return light.color
+        #endif
+    }
 }
 
 /// Colours from the web theme's CSS variables (style.css `:root`), adjusted where the web
-/// values fail WCAG AA contrast for small text. Light theme only for now; the app forces
-/// light mode so these fixed colours never end up on a dark background.
+/// values fail WCAG AA contrast for small text. Each follows light / dark mode; the bright
+/// graphics colours (warm, cyan, red, green) read on both, so they stay fixed.
 enum Theme {
-    static let bg = ThemeRGB.page.color
-    static let bgGlowTop = Color(r: 120, g: 170, b: 230, a: 0.22)
-    static let bgGlowBottom = Color(r: 220, g: 210, b: 255, a: 0.32)
-    static let text = ThemeRGB.text.color
-    static let strong = ThemeRGB.strong.color
-    static let muted = ThemeRGB.muted.color
-    static let fade = ThemeRGB.fade.color
+    static let bg = Color.adaptive(ThemeRGB.page, ThemeRGB.Dark.page)
+    static let bgGlowTop = Color.adaptive(RGB(120, 170, 230), RGB(40, 80, 150), lightAlpha: 0.22, darkAlpha: 0.30)
+    static let bgGlowBottom = Color.adaptive(RGB(220, 210, 255), RGB(70, 50, 120), lightAlpha: 0.32, darkAlpha: 0.30)
+    static let text = Color.adaptive(ThemeRGB.text, ThemeRGB.Dark.text)
+    static let strong = Color.adaptive(ThemeRGB.strong, ThemeRGB.Dark.strong)
+    static let muted = Color.adaptive(ThemeRGB.muted, ThemeRGB.Dark.muted)
+    static let fade = Color.adaptive(ThemeRGB.fade, ThemeRGB.Dark.fade)
     static let warm = ThemeRGB.warm.color
     static let cyan = ThemeRGB.cyan.color
     static let red = ThemeRGB.red.color
     static let green = ThemeRGB.green.color
-    static let blue = ThemeRGB.blue.color
-    /// Darker twins of warm/cyan/red for *text*; the bright ones stay for arrows and curves.
-    static let warmText = ThemeRGB.warmText.color
-    static let cyanText = ThemeRGB.cyanText.color
-    static let redText = ThemeRGB.redText.color
-    static let card = Color.white.opacity(0.72)
-    static let cardBorder = Color.white.opacity(0.9)
-    static let separator = Color(r: 20, g: 40, b: 80, a: 0.10)
+    static let blue = Color.adaptive(ThemeRGB.blue, ThemeRGB.Dark.blue)
+    /// Darker twins of warm/cyan/red for *text* (lighter ones in dark mode); the bright ones
+    /// stay for arrows and curves.
+    static let warmText = Color.adaptive(ThemeRGB.warmText, ThemeRGB.Dark.warmText)
+    static let cyanText = Color.adaptive(ThemeRGB.cyanText, ThemeRGB.Dark.cyanText)
+    static let redText = Color.adaptive(ThemeRGB.redText, ThemeRGB.Dark.redText)
+    static let amberText = Color.adaptive(ThemeRGB.amberText, ThemeRGB.Dark.amberText)
+    static let card = Color.adaptive(RGB(255, 255, 255), ThemeRGB.Dark.card, lightAlpha: 0.72, darkAlpha: 0.88)
+    static let cardBorder = Color.adaptive(RGB(255, 255, 255), RGB(255, 255, 255), lightAlpha: 0.9, darkAlpha: 0.08)
+    static let separator = Color.adaptive(RGB(20, 40, 80), RGB(255, 255, 255), lightAlpha: 0.10, darkAlpha: 0.12)
+    static let cardShadow = Color.adaptive(RGB(20, 40, 80), RGB(0, 0, 0), lightAlpha: 0.06, darkAlpha: 0.35)
 }
 
 private struct StaticRenderKey: EnvironmentKey { static let defaultValue = false }
@@ -96,7 +143,7 @@ extension View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.cardBorder, lineWidth: 1))
-            .shadow(color: Color(r: 20, g: 40, b: 80, a: 0.06), radius: 8, y: 2)
+            .shadow(color: Theme.cardShadow, radius: 8, y: 2)
     }
 }
 
