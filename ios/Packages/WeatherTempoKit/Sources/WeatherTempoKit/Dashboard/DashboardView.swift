@@ -98,7 +98,8 @@ public struct DashboardContent: View {
             }
             MeteogramView(hours: payload.hourly, days: state.chartDays,
                           timeZone: state.location.timeZone, now: state.now,
-                          latitude: state.location.lat, longitude: state.location.lon)
+                          latitude: state.location.lat, longitude: state.location.lon,
+                          warnings: state.warnings)
         }
         .dashboardCard()
     }

@@ -63,10 +63,12 @@ import UniformTypeIdentifiers
     }
 
     @Test func rendersMetServiceWarnings() throws {
-        var state = DashboardState.sample
+        var state = DashboardState.sample      // Tue 3 Nov, 2pm
         state.warnings = [
-            try #require(CAPParser.warning(capXML(id: "snap-orange"))),
+            try #require(CAPParser.warning(capXML(id: "snap-orange", onset: "2026-11-03T20:00:00+13:00",
+                                                  expires: "2026-11-04T09:00:00+13:00"))),
             try #require(CAPParser.warning(capXML(id: "snap-yellow", headline: "Strong Wind Watch", colour: "Yellow",
+                                                  onset: "2026-11-04T06:00:00+13:00", expires: "2026-11-04T18:00:00+13:00",
                                                   area: "Canterbury High Country"))),
         ]
         try save(try render(state), named: "dashboard-warnings")

@@ -13,6 +13,7 @@ public enum MeteogramRenderer {
     public static func draw(_ m: MeteogramModel, in ctx: inout GraphicsContext, palette p: ChartPalette = .light) {
         guard !m.hours.isEmpty else { return }
         drawBackground(m, &ctx, p)
+        drawWarningShade(m, &ctx, p)
         drawCloudCover(m, &ctx, p)
         drawFreezingLine(m, &ctx, p)
         if m.layout.detailedLayers { drawUV(m, &ctx, p) }
@@ -28,6 +29,31 @@ public enum MeteogramRenderer {
         drawTimeAxis(m, &ctx, p)
         if m.layout.showDayAxis { drawDayAxis(m, &ctx, p) }
         drawTempLabels(m, &ctx, p)
+        drawWarningStrip(m, &ctx, p)
+    }
+
+    // MARK: Warnings (no chart.js original)
+
+    /// A light tint over the data zones for the hours a MetService warning is in force.
+    static func drawWarningShade(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
+        for s in m.warningSpans {
+            let c = ThemeRGB.warningFill(s.level).color
+            let rect = CGRect(x: s.x0, y: 0, width: s.x1 - s.x0, height: m.layout.precipBot)
+            ctx.fill(Path(rect), with: .color(c.opacity(0.13)))
+            for x in [s.x0, s.x1] {
+                ctx.stroke(line(CGPoint(x: x, y: 0), CGPoint(x: x, y: m.layout.precipBot)),
+                           with: .color(c.opacity(0.55)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+        }
+    }
+
+    /// A solid strip in the warning's colour along the top edge, drawn last so nothing covers it.
+    static func drawWarningStrip(_ m: MeteogramModel, _ ctx: inout GraphicsContext, _ p: ChartPalette) {
+        let h = min(4, max(3, m.layout.cloudTop - 1))   // clear of the NOW label below it
+        for s in m.warningSpans {
+            ctx.fill(Path(CGRect(x: s.x0, y: 0, width: s.x1 - s.x0, height: h)),
+                     with: .color(ThemeRGB.warningFill(s.level).color))
+        }
     }
 
     // MARK: Helpers

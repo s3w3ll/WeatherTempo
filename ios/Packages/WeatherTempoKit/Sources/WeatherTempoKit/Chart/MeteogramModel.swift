@@ -21,6 +21,8 @@ public struct MeteogramModel: Equatable {
     /// position. nil = shade the background from each hour's day/night flag instead.
     public let latitude: Double?
     public let longitude: Double?
+    /// MetService warnings, as bands across the chart for the hours they're in force.
+    public let warningSpans: [WarningSpan]
 
     public let tMin: Double
     public let tMax: Double
@@ -45,7 +47,8 @@ public struct MeteogramModel: Equatable {
         timeZone: TimeZone = MeteogramModel.nzTimeZone,
         layout: ChartLayout = .web,
         latitude: Double? = nil,
-        longitude: Double? = nil
+        longitude: Double? = nil,
+        warnings: [WeatherWarning] = []
     ) {
         self.hours = hours
         self.pxPerHour = pxPerHour
@@ -53,6 +56,7 @@ public struct MeteogramModel: Equatable {
         self.layout = layout
         self.latitude = latitude
         self.longitude = longitude
+        self.warningSpans = Self.spans(warnings, hours: hours, pxPerHour: pxPerHour)
 
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
@@ -437,5 +441,44 @@ public struct MeteogramModel: Equatable {
             DetailRow(label: "Cloud cover", value: plain(h.cloudCover, "%")),
             DetailRow(label: "Dew point", value: dew),
         ]
+    }
+}
+
+// MARK: - Warning bands
+
+/// Where a MetService warning sits on the chart.
+public struct WarningSpan: Equatable, Sendable {
+    public let id: String
+    public let headline: String
+    public let level: WeatherWarning.Level
+    /// In force from / until (UTC seconds), open ends clamped to the series.
+    public let start: Double
+    public let end: Double
+    public let x0: Double
+    public let x1: Double
+}
+
+extension MeteogramModel {
+    /// Hour `i`'s centre is `hours[i].validTimeUtc`, so time maps to x linearly from there.
+    /// Bands are clamped to the data area; ones entirely outside it are dropped. Least severe
+    /// first, so the renderer draws the most severe on top.
+    static func spans(_ warnings: [WeatherWarning], hours: [Hour], pxPerHour: Double) -> [WarningSpan] {
+        guard let t0 = hours.first?.validTimeUtc, let tn = hours.last?.validTimeUtc else { return [] }
+        let first = t0 - 1800, last = tn + 1800
+        func x(_ t: Double) -> Double { ChartPad.left + pxPerHour / 2 + (t - t0) / 3600 * pxPerHour }
+        return warnings.sorted { $0.level < $1.level }.compactMap { w in
+            let start = max(w.onset?.timeIntervalSince1970 ?? first, first)
+            let end = min(w.expires?.timeIntervalSince1970 ?? last, last)
+            guard end > start else { return nil }
+            return WarningSpan(id: w.id, headline: w.headline, level: w.level, start: start, end: end,
+                               x0: x(start), x1: x(end))
+        }
+    }
+
+    /// The most severe warning in force during hour `i` (for the hour details).
+    public func warning(atHour i: Int) -> WarningSpan? {
+        guard hours.indices.contains(i) else { return nil }
+        let t = hours[i].validTimeUtc
+        return warningSpans.last { $0.start <= t && t < $0.end }
     }
 }

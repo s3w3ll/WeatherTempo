@@ -30,15 +30,5 @@ public enum WarningStore {
 extension WeatherWarning {
     /// The headline without MetService's colour suffix ("Heavy Rain Warning - Orange" →
     /// "Heavy Rain Warning"), for places where the colour is already shown.
-    public var shortHeadline: String {
-        for level in Level.allCases {
-            for dash in [" - ", " – ", " — "] {
-                let suffix = dash + level.rawValue
-                if headline.lowercased().hasSuffix(suffix.lowercased()) {
-                    return String(headline.dropLast(suffix.count))
-                }
-            }
-        }
-        return headline
-    }
+    public var shortHeadline: String { Self.shortHeadline(headline) }
 }

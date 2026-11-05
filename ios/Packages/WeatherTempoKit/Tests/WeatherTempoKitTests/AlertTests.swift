@@ -196,7 +196,7 @@ private func plan(_ hs: [WeatherPayload.Hour], _ s: AlertSettings, now hour: Dou
     }
 }
 
-private final class FakeScheduler: NotificationScheduling, @unchecked Sendable {
+final class FakeScheduler: NotificationScheduling, @unchecked Sendable {
     var replaced: [[PlannedAlert]] = []
     func authorization() async -> AlertAuthorization { .allowed }
     func requestAuthorization() async -> Bool { true }

@@ -269,9 +269,13 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
     }
 
     @Test func rendersMetServiceWarnings() throws {
-        let orange = try #require(CAPParser.warning(capXML(id: "o")))
+        // rainySnapshot is Tue 3am: these fall inside the widget's 30-hour chart
+        let orange = try #require(CAPParser.warning(capXML(id: "o", onset: "2026-11-03T12:00:00+13:00",
+                                                           expires: "2026-11-03T22:00:00+13:00")))
         let yellow = try #require(CAPParser.warning(capXML(id: "y", headline: "Strong Wind Watch", colour: "Yellow")))
-        let red = try #require(CAPParser.warning(capXML(id: "r", headline: "Heavy Rain Warning - Red", colour: "Red")))
+        let red = try #require(CAPParser.warning(capXML(id: "r", headline: "Heavy Rain Warning - Red", colour: "Red",
+                                                        onset: "2026-11-03T01:00:00+13:00",
+                                                        expires: "2026-11-04T06:00:00+13:00")))
         var two = rainySnapshot
         two.warnings = [orange, yellow]
         var redOnly = rainySnapshot

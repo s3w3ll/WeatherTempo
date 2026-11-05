@@ -242,7 +242,7 @@ private struct LargeWidget: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spokenWarnings(warnings, snapshot) + AccessibilityText.current(payload, insights)
                                 + (insights.nextHoursSummary.map { " Next 12 hours: " + $0 } ?? ""))
-            WidgetChart(insights: insights, now: snapshot.date, location: snapshot.location)
+            WidgetChart(insights: insights, now: snapshot.date, location: snapshot.location, warnings: warnings)
                 .accessibilityHidden(true)
             DailyStrip(cells: insights.dailyStrip)
         }
@@ -270,7 +270,7 @@ private struct LargeWidget: View {
             } else {
                 HStack(alignment: .top, spacing: 14) {
                     column([("WIND", c.windSpeed.map { "\(Int($0.rounded())) km/h" } ?? "—"),
-                            ("UV", c.uvIndex.map { "\(Int($0.rounded()))" } ?? "—")])
+                            ("UV", uvValue(c))])
                     column([("HUMIDITY", c.humidity.map { "\(Int($0.rounded()))%" } ?? "—"),
                             ("PRESSURE", c.pressure.map { "\(Int($0.rounded())) hPa" } ?? "—")])
                 }
@@ -293,6 +293,12 @@ private struct LargeWidget: View {
         .padding(.horizontal, 9).padding(.vertical, 6)
         .frame(maxWidth: 210, alignment: .leading)
         .background(ThemeRGB.warningFill(w.level).color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// The sun protection window when there is one ("9 · 10am–5pm"), else the UV now.
+    private func uvValue(_ c: WeatherPayload.Current) -> String {
+        if let sun = insights.sunProtection { return "\(Int(sun.peak.rounded())) · \(sun.compactTimes)" }
+        return c.uvIndex.map { "\(Int($0.rounded()))" } ?? "—"
     }
 
     private func column(_ rows: [(String, String)]) -> some View {
@@ -323,6 +329,7 @@ private struct WidgetChart: View {
     let insights: WeatherInsights
     let now: Date
     let location: Location
+    let warnings: [WeatherWarning]
 
     var body: some View {
         GeometryReader { geo in
@@ -330,7 +337,8 @@ private struct WidgetChart: View {
             let pph = max(4, (geo.size.width - ChartPad.left - ChartPad.right) / Double(max(hours.count, 1)))
             MeteogramCanvas(
                 model: MeteogramModel(hours: hours, pxPerHour: pph, now: now, timeZone: location.timeZone,
-                                      layout: .compact, latitude: location.lat, longitude: location.lon),
+                                      layout: .compact, latitude: location.lat, longitude: location.lon,
+                                      warnings: warnings),
                 palette: .sky)
         }
         .frame(height: ChartLayout.compact.height)

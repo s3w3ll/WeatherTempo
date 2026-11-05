@@ -27,6 +27,11 @@ public actor WarningClient {
 
     /// Current alerts whose area contains the point, most severe first.
     public func warnings(latitude: Double, longitude: Double, now: Date) async throws -> [WeatherWarning] {
+        try await fetch(latitude: latitude, longitude: longitude, now: now).warnings
+    }
+
+    /// As `warnings`, plus whether every alert in the feed could be read.
+    public func fetch(latitude: Double, longitude: Double, now: Date) async throws -> WarningFetch {
         let (data, response) = try await load(Self.request(Self.feedURL))
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw WeatherClientError.http(status: http.statusCode)
@@ -51,8 +56,28 @@ public actor WarningClient {
         let live = Set(links)
         cache = cache.filter { live.contains($0.key) }
 
-        return links.compactMap { cache[$0]?.warning }
+        let warnings = links.compactMap { cache[$0]?.warning }
             .filter { $0.isCurrent(at: now) && $0.covers(latitude: latitude, longitude: longitude) }
             .ordered()
+        return WarningFetch(warnings: warnings, complete: links.allSatisfy { cache[$0] != nil })
     }
+}
+
+/// The result of one warnings check.
+public struct WarningFetch: Equatable, Sendable {
+    /// Current alerts covering the place, most severe first.
+    public var warnings: [WeatherWarning]
+    /// Every alert in MetService's feed was read. When false, a warning missing from
+    /// `warnings` may only have failed to download, so it mustn't be taken as lifted.
+    public var complete: Bool
+
+    public init(warnings: [WeatherWarning], complete: Bool = true) {
+        self.warnings = warnings
+        self.complete = complete
+    }
+}
+
+/// Runs `body`, keeping its error instead of throwing it (for `async let` alongside other work).
+func catching<T: Sendable>(_ body: @Sendable () async throws -> T) async -> Result<T, Error> {
+    do { return .success(try await body()) } catch { return .failure(error) }
 }

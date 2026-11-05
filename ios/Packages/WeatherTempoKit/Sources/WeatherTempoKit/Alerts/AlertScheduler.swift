@@ -108,20 +108,21 @@ public final class AlertCoordinator {
         }
     }
 
-    /// Call after each warnings fetch: notifies about warnings not seen before (asking for
-    /// permission the first time one arrives).
-    public func warningsUpdated(_ warnings: [WeatherWarning], location: Location) {
-        guard settings.warningsEnabled else { return }
-        let fresh = WarningNotifications.toNotify(warnings, notified: WarningNotifications.notified(in: store))
-        guard !fresh.isEmpty else { return }
-        WarningNotifications.markNotified(fresh, in: store)
+    /// Call after each warnings fetch: notifies about new, upgraded and lifted warnings
+    /// (asking for permission the first time one arrives).
+    public func warningsUpdated(_ fetch: WarningFetch, location: Location) {
+        let notices = WarningNotifications.process(fetch, location: location, settings: settings,
+                                                   store: store, now: clock())
+        guard !notices.isEmpty else { return }
         let scheduler = scheduler
-        let now = clock()
+        let store = store
         Task {
             await ensureAuthorized()
-            for w in fresh {
-                let c = WarningNotifications.content(w, locationName: location.name, now: now, timeZone: location.timeZone)
-                await scheduler.notifyNow(id: c.id, title: c.title, body: c.body)
+            let allowed = authorization == .allowed
+            for n in notices {
+                await scheduler.notifyNow(id: n.id, title: n.title, body: n.body)
+                DiagnosticsLog.record(.app, .notification, ok: allowed,
+                                      allowed ? n.title : "Not allowed: \(n.title)", in: store)
             }
         }
     }
@@ -168,22 +169,33 @@ public enum AlertBackground {
         let location = Location.named(store.loadString(DashboardModel.locationKey))
 
         // Warnings first: they matter most and don't depend on the forecast.
-        if settings.warningsEnabled,
-           let warnings = try? await warningClient.warnings(latitude: location.lat, longitude: location.lon, now: now) {
-            let fresh = WarningNotifications.toNotify(warnings, notified: WarningNotifications.notified(in: store))
-            WarningNotifications.markNotified(fresh, in: store)
-            for w in fresh {
-                let c = WarningNotifications.content(w, locationName: location.name, now: now, timeZone: location.timeZone)
-                await scheduler.notifyNow(id: c.id, title: c.title, body: c.body)
+        if settings.warningsEnabled {
+            do {
+                let fetch = try await warningClient.fetch(latitude: location.lat, longitude: location.lon, now: now)
+                WarningStore.save(fetch.warnings, locationID: location.id, in: store)
+                DiagnosticsLog.record(.background, .warnings, ok: true, DiagnosticsLog.describe(fetch), at: now, in: store)
+                let notices = WarningNotifications.process(fetch, location: location, settings: settings,
+                                                           store: store, now: now)
+                let allowed = await scheduler.authorization() == .allowed
+                for n in notices {
+                    await scheduler.notifyNow(id: n.id, title: n.title, body: n.body)
+                    DiagnosticsLog.record(.background, .notification, ok: allowed,
+                                          allowed ? n.title : "Not allowed: \(n.title)", at: now, in: store)
+                }
+            } catch {
+                DiagnosticsLog.record(.background, .warnings, ok: false, DiagnosticsLog.describe(error), at: now, in: store)
             }
         }
 
         let payload: WeatherPayload?
-        if let fresh = try? await client.fetch(locationID: location.id) {
+        do {
+            let fresh = try await client.fetch(locationID: location.id)
             try? cache.save(fresh, locationID: location.id)
             payload = fresh
-        } else {
+            DiagnosticsLog.record(.background, .forecast, ok: true, location.name, at: now, in: store)
+        } catch {
             payload = cache.load(locationID: location.id)
+            DiagnosticsLog.record(.background, .forecast, ok: false, DiagnosticsLog.describe(error), at: now, in: store)
         }
         guard let payload else { return }
 
@@ -192,40 +204,5 @@ public enum AlertBackground {
                                 timeZone: location.timeZone, now: now)
             : []
         await scheduler.replaceAll(with: plan)
-    }
-}
-
-/// Which warnings to notify about, and what the notification says. Each MetService alert id
-/// is notified once (an update gets a new id, so an upgraded warning notifies again).
-public enum WarningNotifications {
-    static let storeKey = "weatherTempo.notifiedWarnings"
-    static let idPrefix = "weathertempo.warning."
-    /// Ids remembered; old ones drop off (MetService ids are never reused).
-    static let memory = 100
-
-    public static func toNotify(_ warnings: [WeatherWarning], notified: [String]) -> [WeatherWarning] {
-        let seen = Set(notified)
-        return warnings.filter { !seen.contains($0.id) }
-    }
-
-    static func notified(in store: KeyValueStoring) -> [String] {
-        guard let json = store.loadString(storeKey), let data = json.data(using: .utf8),
-              let ids = try? JSONDecoder().decode([String].self, from: data) else { return [] }
-        return ids
-    }
-
-    static func markNotified(_ warnings: [WeatherWarning], in store: KeyValueStoring) {
-        guard !warnings.isEmpty else { return }
-        let ids = Array((notified(in: store) + warnings.map(\.id)).suffix(memory))
-        if let data = try? JSONEncoder().encode(ids), let json = String(data: data, encoding: .utf8) {
-            store.saveString(json, for: storeKey)
-        }
-    }
-
-    public static func content(_ w: WeatherWarning, locationName: String, now: Date, timeZone: TimeZone)
-        -> (id: String, title: String, body: String) {
-        (idPrefix + w.id,
-         "\(w.headline) – \(locationName)",
-         "\(w.timing(now: now, timeZone: timeZone)). \(w.summary)")
     }
 }

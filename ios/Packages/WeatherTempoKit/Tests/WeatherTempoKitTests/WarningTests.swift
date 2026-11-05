@@ -176,38 +176,135 @@ func rssXML(_ ids: [String]) -> Data {
 }
 
 @Suite struct WarningNotificationTests {
-    @Test func eachAlertIsNotifiedOnce() throws {
-        let w = try #require(CAPParser.warning(capXML(id: "n1")))
-        let store = InMemoryStore()
-        #expect(WarningNotifications.toNotify([w], notified: WarningNotifications.notified(in: store)).count == 1)
-        WarningNotifications.markNotified([w], in: store)
-        #expect(WarningNotifications.toNotify([w], notified: WarningNotifications.notified(in: store)).isEmpty)
+    private let later = thursdayEvening.addingTimeInterval(3600)
+
+    private func alert(_ id: String, _ level: String = "Orange", headline: String? = nil, event: String = "rain",
+                       expires: String = "2026-11-07T03:00:00+13:00") throws -> WeatherWarning {
+        var w = try #require(CAPParser.warning(capXML(id: id, headline: headline ?? "Heavy Rain Warning - \(level)",
+                                                      colour: level, expires: expires)))
+        w = WeatherWarning(id: w.id, headline: w.headline, event: event, level: w.level, onset: w.onset,
+                           expires: w.expires, areaDescription: w.areaDescription, details: w.details,
+                           polygons: w.polygons)
+        return w
     }
 
-    @Test func memoryIsBounded() throws {
-        let store = InMemoryStore()
-        let many = (0..<150).map { i in
-            WeatherWarning(id: "id\(i)", headline: "", event: "", level: .yellow, onset: nil, expires: nil,
-                           areaDescription: "", details: "", polygons: [])
+    private func decide(_ warnings: [WeatherWarning], complete: Bool = true, memory: [RememberedWarning] = [],
+                        legacy: Set<String> = [], lifted: Bool = true, location: String = "christchurch",
+                        now: Date = thursdayEvening) -> (notices: [WarningNotice], memory: [RememberedWarning]) {
+        WarningNotifications.decide(WarningFetch(warnings: warnings, complete: complete), locationID: location,
+                                    placeName: "Christchurch", timeZone: nz, memory: memory, legacyIDs: legacy,
+                                    liftedEnabled: lifted, now: now)
+    }
+
+    @Test func aNewWarningNotifiesOnce() throws {
+        let first = decide([try alert("a")])
+        #expect(first.notices == [WarningNotice(
+            id: "weathertempo.warning.a", title: "Heavy Rain Warning - Orange – Christchurch",
+            body: "From Fri 9am to Sat 3am. Periods of heavy rain.")])
+        #expect(decide([try alert("a")], memory: first.memory, now: later).notices.isEmpty)
+    }
+
+    @Test func aReissueAtTheSameOrLowerLevelIsQuiet() throws {
+        let m = decide([try alert("a")]).memory
+        #expect(decide([try alert("b")], memory: m, now: later).notices.isEmpty)               // same level, new id
+        #expect(decide([try alert("c", "Yellow")], memory: m, now: later).notices.isEmpty)     // downgraded
+    }
+
+    @Test func anUpgradeNotifies() throws {
+        let watch = decide([try alert("w", "Yellow", headline: "Heavy Rain Watch")]).memory
+        let up = decide([try alert("o")], memory: watch, now: later)
+        #expect(up.notices.map(\.id) == ["weathertempo.warning.o"])
+        #expect(up.notices[0].body.hasPrefix("Upgraded from yellow. "))
+        let red = decide([try alert("r", "Red")], memory: up.memory, now: later).notices
+        #expect(red.first?.body.hasPrefix("Upgraded from orange. ") == true)
+    }
+
+    @Test func differentHazardsAreSeparate() throws {
+        let m = decide([try alert("rain")]).memory
+        let wind = decide([try alert("rain"), try alert("wind", headline: "Strong Wind Warning - Orange", event: "wind")],
+                          memory: m, now: later)
+        #expect(wind.notices.map(\.id) == ["weathertempo.warning.wind"])
+    }
+
+    @Test func twoNewAlertsForOneHazardNotifyOnlyTheWorse() throws {
+        let n = decide([try alert("y", "Yellow"), try alert("o")]).notices
+        #expect(n.map(\.id) == ["weathertempo.warning.o"])
+    }
+
+    @Test func aWarningGoneEarlyFromACompleteFeedIsLifted() throws {
+        let m = decide([try alert("a")]).memory
+        let gone = decide([], memory: m, now: later)
+        #expect(gone.notices == [WarningNotice(
+            id: "weathertempo.warning.lifted.a", title: "Heavy Rain Warning lifted – Christchurch",
+            body: "MetService no longer has the Heavy Rain Warning - Orange in force for Christchurch.")])
+        #expect(decide([], memory: gone.memory, now: later.addingTimeInterval(600)).notices.isEmpty)   // once
+    }
+
+    @Test func liftedNeedsACompleteFeedTheSettingAndTimeLeft() throws {
+        let m = decide([try alert("a")]).memory
+        #expect(decide([], complete: false, memory: m, now: later).notices.isEmpty)    // an alert failed to load
+        #expect(decide([], memory: m, lifted: false, now: later).notices.isEmpty)     // setting off
+        // Sat 2:45am: 15 minutes before its 3am expiry it simply ran its course
+        let nearEnd = ISO8601DateFormatter().date(from: "2026-11-06T13:45:00Z")!
+        #expect(decide([], memory: m, now: nearEnd).notices.isEmpty)
+        // another place's warnings aren't this place's to lift
+        #expect(decide([], memory: m, location: "dunedin", now: later).notices.isEmpty)
+    }
+
+    @Test func aReissueKeepsTheHazardInForce() throws {
+        let m = decide([try alert("a")]).memory
+        let reissued = decide([try alert("b")], memory: m, now: later)
+        #expect(reissued.notices.isEmpty)
+        // "a" left the feed but "b" (same hazard) is there: nothing was lifted
+        #expect(decide([try alert("b")], memory: reissued.memory, now: later.addingTimeInterval(600)).notices.isEmpty)
+    }
+
+    @Test func idsNotifiedByTheOldVersionStayQuietButAreTracked() throws {
+        let r = decide([try alert("old")], legacy: ["old"])
+        #expect(r.notices.isEmpty)
+        #expect(r.memory.map(\.id) == ["old"])
+    }
+
+    @Test func memoryIsPrunedAndBounded() throws {
+        var m: [RememberedWarning] = []
+        for i in 0..<150 {
+            m = decide([try alert("id\(i)", event: "e\(i)")], memory: m, lifted: false).memory
         }
-        WarningNotifications.markNotified(many, in: store)
-        let ids = WarningNotifications.notified(in: store)
-        #expect(ids.count == WarningNotifications.memory)
-        #expect(ids.last == "id149")
+        #expect(m.count == WarningNotifications.memory && m.last?.id == "id149")
+        // a week after they all expired, they're forgotten
+        let nextWeek = thursdayEvening.addingTimeInterval(10 * 86_400)
+        #expect(decide([], memory: m, now: nextWeek).memory.isEmpty)
     }
 
-    @Test func notificationText() throws {
-        let w = try #require(CAPParser.warning(capXML(id: "t")))
-        let c = WarningNotifications.content(w, locationName: "Christchurch", now: thursdayEvening, timeZone: nz)
-        #expect(c.id == "weathertempo.warning.t")
-        #expect(c.title == "Heavy Rain Warning - Orange – Christchurch")
-        #expect(c.body == "From Fri 9am to Sat 3am. Periods of heavy rain.")
+    @Test func processRespectsTheSwitchAndStoresMemory() throws {
+        let store = InMemoryStore()
+        var settings = AlertSettings()
+        settings.warningsEnabled = false
+        let fetch = WarningFetch(warnings: [try alert("p")])
+        #expect(WarningNotifications.process(fetch, location: chc, settings: settings, store: store, now: thursdayEvening).isEmpty)
+        settings.warningsEnabled = true
+        #expect(WarningNotifications.process(fetch, location: chc, settings: settings, store: store, now: thursdayEvening).count == 1)
+        #expect(WarningNotifications.process(fetch, location: chc, settings: settings, store: store, now: later).isEmpty)
+        WarningNotifications.forget(in: store)
+        #expect(WarningNotifications.process(fetch, location: chc, settings: settings, store: store, now: later).count == 1)
     }
 
     @Test func oldSettingsTurnWarningsOn() throws {
         let store = InMemoryStore([AlertSettings.storeKey: #"{"rainEnabled":true}"#])
         let s = AlertSettings.load(from: store)
-        #expect(s.warningsEnabled && s.rainEnabled)
+        #expect(s.warningsEnabled && s.warningLiftedEnabled && s.rainEnabled)
+    }
+
+    @Test func clientReportsIncompleteFeeds() async throws {
+        let c = WarningClient { req in
+            let url = req.url!.absoluteString
+            let ok = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            if url == WarningClient.feedURL.absoluteString { return (rssXML(["good", "broken"]), ok) }
+            if url.hasSuffix("good") { return (capXML(id: "good"), ok) }
+            throw URLError(.timedOut)
+        }
+        let f = try await c.fetch(latitude: chc.lat, longitude: chc.lon, now: thursdayEvening)
+        #expect(f.warnings.map(\.id) == ["good"] && !f.complete)
     }
 }
 

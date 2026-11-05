@@ -46,22 +46,33 @@ public enum WidgetLoader {
         now: Date = Date()
     ) async -> WidgetSnapshot {
         let location = Location.named(store.loadString(DashboardModel.locationKey))
-        async let fetchedWarnings = try? warningClient.warnings(latitude: location.lat, longitude: location.lon, now: now)
+        async let fetchedWarnings = catching {
+            try await warningClient.fetch(latitude: location.lat, longitude: location.lon, now: now)
+        }
 
         let payload: WeatherPayload?
-        if let fresh = try? await client.fetch(locationID: location.id) {
+        do {
+            let fresh = try await client.fetch(locationID: location.id)
             try? cache.save(fresh, locationID: location.id)
             payload = fresh
-        } else {
+            DiagnosticsLog.record(.widget, .forecast, ok: true, location.name, at: now, in: store)
+        } catch {
             payload = cache.load(locationID: location.id)
+            DiagnosticsLog.record(.widget, .forecast, ok: false,
+                                  DiagnosticsLog.describe(error) + (payload == nil ? ", nothing cached" : ", showing cached"),
+                                  at: now, in: store)
         }
 
         let warnings: [WeatherWarning]
-        if let fresh = await fetchedWarnings {
-            WarningStore.save(fresh, locationID: location.id, in: store)
-            warnings = fresh
-        } else {
+        switch await fetchedWarnings {
+        case .success(let fetch):
+            WarningStore.save(fetch.warnings, locationID: location.id, in: store)
+            warnings = fetch.warnings
+            DiagnosticsLog.record(.widget, .warnings, ok: true, DiagnosticsLog.describe(fetch), at: now, in: store)
+        case .failure(let error):
             warnings = WarningStore.load(locationID: location.id, in: store, now: now)
+            DiagnosticsLog.record(.widget, .warnings, ok: false,
+                                  DiagnosticsLog.describe(error) + ", showing \(warnings.count) saved", at: now, in: store)
         }
         return WidgetSnapshot(location: location, payload: payload, date: now, warnings: warnings)
     }

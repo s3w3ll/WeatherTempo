@@ -22,7 +22,7 @@ struct WeatherTempoApp: App {
         // Every fresh forecast reschedules the temperature / UV notifications.
         model.onFreshPayload = { payload, location in alerts.forecastUpdated(payload, location: location) }
         // New MetService watches / warnings for the location become notifications.
-        model.onWarnings = { warnings, location in alerts.warningsUpdated(warnings, location: location) }
+        model.onWarnings = { fetch, location in alerts.warningsUpdated(fetch, location: location) }
         _model = State(initialValue: model)
         _alerts = State(initialValue: alerts)
         UNUserNotificationCenter.current().delegate = Self.notificationDelegate
@@ -45,7 +45,15 @@ struct WeatherTempoApp: App {
 
     private static func scheduleBackgroundRefresh() {
         let request = BGAppRefreshTaskRequest(identifier: AlertBackground.taskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 3 * 3600)
-        try? BGTaskScheduler.shared.submit(request)
+        let earliest = Date(timeIntervalSinceNow: 3 * 3600)
+        request.earliestBeginDate = earliest
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            DiagnosticsLog.record(.app, .schedule, ok: true, "Requested")
+        } catch {
+            // Shows on the diagnostics screen: e.g. background refresh off, or a build that
+            // lost the permitted task identifier.
+            DiagnosticsLog.record(.app, .schedule, ok: false, "\(error)")
+        }
     }
 }

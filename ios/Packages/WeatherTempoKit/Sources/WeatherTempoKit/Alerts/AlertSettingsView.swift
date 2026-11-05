@@ -72,10 +72,13 @@ public struct AlertSettingsView: View {
 
                 Section {
                     Toggle("MetService warnings", isOn: $coordinator.settings.warningsEnabled)
+                    if coordinator.settings.warningsEnabled {
+                        Toggle("When one is lifted early", isOn: $coordinator.settings.warningLiftedEnabled)
+                    }
                 } header: {
                     Text("Severe weather")
                 } footer: {
-                    Text("Watches and warnings MetService issues for this location, as soon as the app or a background refresh sees them.")
+                    Text("Watches and warnings MetService issues for this location, as soon as the app or a background refresh sees them. Reissues of a warning stay quiet unless it's upgraded.")
                 }
 
                 if !coordinator.planned.isEmpty {
@@ -90,6 +93,7 @@ public struct AlertSettingsView: View {
                 }
 
                 Section {
+                    NavigationLink("Diagnostics") { DiagnosticsView() }
                 } footer: {
                     Text("Alerts come from the forecast and are rescheduled whenever it refreshes, so open the app now and then. iOS may also refresh it in the background.")
                 }

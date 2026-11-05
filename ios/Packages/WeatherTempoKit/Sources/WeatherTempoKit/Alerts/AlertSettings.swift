@@ -30,6 +30,8 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     /// Notify as soon as MetService issues a watch or warning covering the location.
     /// On by default: it's a safety feature, and permission is asked the first time one arrives.
     public var warningsEnabled = true
+    /// Also notify when MetService lifts a warning well before its planned end.
+    public var warningLiftedEnabled = true
 
     public init() {}
 
@@ -50,6 +52,7 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         rainChance = try c.decodeIfPresent(Double.self, forKey: .rainChance) ?? d.rainChance
         rainLeadMinutes = try c.decodeIfPresent(Int.self, forKey: .rainLeadMinutes) ?? d.rainLeadMinutes
         warningsEnabled = try c.decodeIfPresent(Bool.self, forKey: .warningsEnabled) ?? d.warningsEnabled
+        warningLiftedEnabled = try c.decodeIfPresent(Bool.self, forKey: .warningLiftedEnabled) ?? d.warningLiftedEnabled
     }
 
     public static let storeKey = "weatherTempo.alerts"

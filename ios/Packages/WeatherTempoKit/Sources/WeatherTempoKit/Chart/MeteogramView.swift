@@ -55,6 +55,7 @@ public struct MeteogramView: View {
     private let now: Date
     private let latitude: Double?
     private let longitude: Double?
+    private let warnings: [WeatherWarning]
 
     @State private var selected: Int?
     /// Visible part of the chart as fractions of the series (nil until the scroll view reports).
@@ -78,7 +79,8 @@ public struct MeteogramView: View {
         timeZone: TimeZone = MeteogramModel.nzTimeZone,
         now: Date = Date(),
         latitude: Double? = nil,
-        longitude: Double? = nil
+        longitude: Double? = nil,
+        warnings: [WeatherWarning] = []
     ) {
         self.hours = hours
         self.days = days
@@ -86,6 +88,7 @@ public struct MeteogramView: View {
         self.now = now
         self.latitude = latitude
         self.longitude = longitude
+        self.warnings = warnings
     }
 
     /// The scrolling part: chart plus the pressure strip under it.
@@ -95,7 +98,7 @@ public struct MeteogramView: View {
         // The strips only need the hours, not pixel widths, so they live outside the
         // GeometryReader and size themselves to their text.
         let overview = MeteogramModel(hours: hours, pxPerHour: 1, now: now, timeZone: timeZone,
-                                      latitude: latitude, longitude: longitude)
+                                      latitude: latitude, longitude: longitude, warnings: warnings)
         VStack(alignment: .leading, spacing: 8) {
             WeekOverviewStrip(
                 model: overview,
@@ -110,12 +113,12 @@ public struct MeteogramView: View {
                 let model = MeteogramModel(
                     hours: hours,
                     pxPerHour: MeteogramModel.pxPerHour(viewportWidth: geo.size.width, days: days),
-                    now: now, timeZone: timeZone, latitude: latitude, longitude: longitude)
+                    now: now, timeZone: timeZone, latitude: latitude, longitude: longitude, warnings: warnings)
                 chart(model, viewport: geo.size.width)
             }
             .frame(height: Self.chartHeight)
 
-            MeteogramLegend()
+            MeteogramLegend(warningLevel: overview.warningSpans.map(\.level).max())
         }
         .onChange(of: days) { _, _ in visible = nil }
     }
@@ -257,18 +260,30 @@ struct HourDetailStrip: View {
             if !model.hours.isEmpty {
                 details(min(model.nowIndex, model.hours.count - 1)).hidden().accessibilityHidden(true)
             }
-            if let index, model.hours.indices.contains(index) {
-                details(index)
-            } else {
-                idle
-            }
+            // The idle text keeps its place (invisible) while an hour is shown, so the strip
+            // is always as tall as the taller of the two.
+            let showing = index.map { model.hours.indices.contains($0) } ?? false
+            idle.opacity(showing ? 0 : 1).accessibilityHidden(showing)
+            if showing, let index { details(index) }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func details(_ index: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(model.detailTitle(for: index)).font(.caption.bold())
+            HStack(spacing: 6) {
+                Text(model.detailTitle(for: index)).font(.caption.bold())
+                if let w = model.warning(atHour: index) {
+                    Label {
+                        Text(WeatherWarning.shortHeadline(w.headline)).font(.caption.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(WarningsCard.color(w.level))
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+                    .accessibilityLabel("\(w.level.spokenName): \(w.headline)")
+                }
+            }
             LazyVGrid(columns: columns, alignment: .leading, spacing: 2) {
                 ForEach(model.detailRows(for: index), id: \.label) { row in
                     VStack(alignment: .leading, spacing: 0) {
@@ -297,8 +312,12 @@ struct HourDetailStrip: View {
 /// The chart key in two rows (main zone, then wind/precip/pressure), colours from the palette.
 public struct MeteogramLegend: View {
     @Environment(\.colorScheme) private var colorScheme
+    /// The most severe warning on the chart, to key its band (nil: no warning row).
+    let warningLevel: WeatherWarning.Level?
 
-    public init() {}
+    public init(warningLevel: WeatherWarning.Level? = nil) {
+        self.warningLevel = warningLevel
+    }
 
     public var body: some View {
         let p = ChartPalette.dashboard(colorScheme)
@@ -314,6 +333,12 @@ public struct MeteogramLegend: View {
                 item("Gusts", p.gustLine, dashed: true)
                 item("Precip", p.precipLine, dashed: false)
                 item("Pressure", p.pressLine, dashed: true)
+            }
+            if let warningLevel {
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 1.5).fill(WarningsCard.color(warningLevel)).frame(width: 12, height: 6)
+                    Text("MetService warning in force")
+                }
             }
         }
         .scaledFont(10, relativeTo: .caption)

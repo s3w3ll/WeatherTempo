@@ -74,9 +74,17 @@ extension WeatherInsights {
     /// The dashboard chart's "Next 12 hours" sentence (rain, temperature trend, strong gusts),
     /// for the large widget's status line.
     public var nextHoursSummary: String? {
-        MeteogramModel(hours: upcomingHours(limit: MeteogramModel.nextHoursWindow + 1),
-                       pxPerHour: 1, now: now, timeZone: timeZone)
-            .nextHoursSummary()
+        nextHoursModel.nextHoursSummary(includeSunProtection: false)   // the UV stat shows it instead
+    }
+
+    /// Today's sun protection times, for the large widget's UV stat.
+    public var sunProtection: MeteogramModel.SunProtection? { nextHoursModel.sunProtection() }
+
+    private var nextHoursModel: MeteogramModel {
+        // From the hour in progress, so a stretch already under way is seen as such.
+        let from = payload.hourly.firstIndex { $0.validTimeUtc > now.timeIntervalSince1970 - 3600 } ?? 0
+        return MeteogramModel(hours: Array(payload.hourly[from...].prefix(MeteogramModel.nextHoursWindow + 2)),
+                              pxPerHour: 1, now: now, timeZone: timeZone)
     }
 
     /// Hours from "now" onward for the widget chart (30 min grace, like the strip).

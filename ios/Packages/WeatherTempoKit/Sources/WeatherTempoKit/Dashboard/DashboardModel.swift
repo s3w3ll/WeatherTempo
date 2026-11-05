@@ -83,7 +83,7 @@ public final class DashboardModel {
     /// Called after every successful refresh (the alert planner hangs off this).
     @ObservationIgnored public var onFreshPayload: ((WeatherPayload, Location) -> Void)?
     /// Called after every successful warnings fetch (new warnings become notifications).
-    @ObservationIgnored public var onWarnings: (([WeatherWarning], Location) -> Void)?
+    @ObservationIgnored public var onWarnings: ((WarningFetch, Location) -> Void)?
 
     public init(
         client: WeatherClient = WeatherClient(),
@@ -143,7 +143,9 @@ public final class DashboardModel {
         // Warnings come from MetService, independent of the forecast: fetch alongside it.
         let warningClient = warningClient
         let now = clock()
-        async let fetchedWarnings = try? warningClient.warnings(latitude: target.lat, longitude: target.lon, now: now)
+        async let fetchedWarnings = catching {
+            try await warningClient.fetch(latitude: target.lat, longitude: target.lon, now: now)
+        }
 
         do {
             let fresh = try await client.fetch(locationID: target.id)
@@ -152,20 +154,28 @@ public final class DashboardModel {
             lastRefreshFailed = false
             try? cache.save(fresh, locationID: target.id)
             reloadWidgets()
+            DiagnosticsLog.record(.app, .forecast, ok: true, target.name, at: now, in: store)
             onFreshPayload?(fresh, target)
         } catch {
             // Backgrounding the app cancels the task: not a failure, don't show "Offline".
             if Task.isCancelled || error is CancellationError { return }
             guard gen == generation else { return }
             lastRefreshFailed = true
+            DiagnosticsLog.record(.app, .forecast, ok: false, DiagnosticsLog.describe(error), at: now, in: store)
         }
 
-        if let fresh = await fetchedWarnings, gen == generation {
-            let changed = fresh.map(\.id) != warnings.map(\.id)
-            warnings = fresh
-            WarningStore.save(fresh, locationID: target.id, in: store)
+        switch await fetchedWarnings {
+        case .success(let fetch) where gen == generation:
+            let changed = fetch.warnings.map(\.id) != warnings.map(\.id)
+            warnings = fetch.warnings
+            WarningStore.save(fetch.warnings, locationID: target.id, in: store)
             if changed { reloadWidgets() }      // a new or lifted warning shouldn't wait for the widget's own refresh
-            onWarnings?(fresh, target)
+            DiagnosticsLog.record(.app, .warnings, ok: true, DiagnosticsLog.describe(fetch), at: now, in: store)
+            onWarnings?(fetch, target)
+        case .failure(let error) where !(error is CancellationError):
+            DiagnosticsLog.record(.app, .warnings, ok: false, DiagnosticsLog.describe(error), at: now, in: store)
+        default:
+            break
         }
     }
 
