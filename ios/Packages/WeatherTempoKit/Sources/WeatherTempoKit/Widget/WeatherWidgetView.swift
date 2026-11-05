@@ -377,12 +377,15 @@ private struct LockRectangular: View {
                 Text(conditionText(c)).lineLimit(1)
             }
             .font(.headline)
-            Text("H/L \(hiLo(insights, c))").font(.caption)
-            // The lock screen is one colour, so the full headline keeps the level ("- Orange").
+            // The lock screen is one colour, so the level is spelled out, ahead of the
+            // timing so truncation never cuts it off. The warning takes the hi/lo line too.
             if let warning {
-                Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(warning.headline)")
+                Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(warning.shortHeadline)")
                     .font(.caption.weight(.semibold)).lineLimit(1)
+                Text("\(warning.level.name) · \(warning.timing(now: insights.now, timeZone: insights.timeZone))")
+                    .font(.caption).lineLimit(1)
             } else {
+                Text("H/L \(hiLo(insights, c))").font(.caption)
                 Text(insights.nextRainToday?.summary(in: insights.timeZone)
                      ?? "Wind \(c.windSpeed.map { "\(Int($0.rounded()))" } ?? "—") km/h \(insights.currentWindCardinal)")
                     .font(.caption).lineLimit(1)
@@ -416,7 +419,8 @@ private struct LockInline: View {
 
     var body: some View {
         if let warning {
-            Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(temp(payload.current.temp)) \(warning.headline)")
+            // Inline space is short: level first so it survives truncation.
+            Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(warning.level.name) · \(warning.shortHeadline)")
         } else {
             Text("\(insights.currentGlyph) \(temp(payload.current.temp)) \(conditionText(payload.current))")
         }

@@ -10,6 +10,9 @@ public struct WeatherWarning: Codable, Equatable, Identifiable, Sendable {
         public static func < (a: Level, b: Level) -> Bool { a.rank < b.rank }
         private var rank: Int { switch self { case .yellow: 0; case .orange: 1; case .red: 2 } }
 
+        /// "Yellow", "Orange", "Red", for one-colour places (lock screen) that can't show it.
+        public var name: String { rawValue.capitalized }
+
         /// What VoiceOver says for the colour.
         public var spokenName: String {
             switch self {
