@@ -80,6 +80,14 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
         #expect(rain.summary(in: MeteogramModel.nzTimeZone) == "Moderate rain at 5pm")
     }
 
+    @Test func largeWidgetLineIsTheNextHoursSummary() throws {
+        // 14:00 now; moderate rain at 17:00-18:00 (h() leaves the chance unset, which counts as likely)
+        let hours = (14..<30).map { Double($0) }.map { $0 == 17 ? h($0, qpf: 1.5) : $0 == 18 ? h($0, qpf: 5) : h($0) }
+        let line = try #require(insights(hours, now: 14).nextHoursSummary)
+        #expect(line.hasPrefix("Heavy rain from 5pm, about 2 hours."))
+        #expect(insights([], now: 14).nextHoursSummary == nil)
+    }
+
     @Test func rainThatAlreadyFellOrIsTomorrowIsIgnored() {
         // heavy rain at 09:00 (past by 14:00) and more tomorrow: nothing upcoming today
         let hours = [h(9, qpf: 6), h(15), h(30, qpf: 3)]

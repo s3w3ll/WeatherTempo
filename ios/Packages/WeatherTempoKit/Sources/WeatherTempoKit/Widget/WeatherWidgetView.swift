@@ -190,7 +190,8 @@ private struct LargeWidget: View {
                 rainLine
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(summary(payload, insights))
+            .accessibilityLabel(AccessibilityText.current(payload, insights)
+                                + (insights.nextHoursSummary.map { " Next 12 hours: " + $0 } ?? ""))
             WidgetChart(insights: insights, now: snapshot.date, tz: tz)
                 .accessibilityHidden(true)
             DailyStrip(cells: insights.dailyStrip)
@@ -232,10 +233,14 @@ private struct LargeWidget: View {
         }
     }
 
+    /// The same "next 12 hours" sentence as the dashboard chart; falls back to the old
+    /// rain-today line if there's no hourly data to summarise.
     @ViewBuilder private var rainLine: some View {
-        if let rain = insights.nextRainToday {
-            Text(rain.summary(in: tz))
-                .font(.system(size: 10, weight: .semibold)).foregroundStyle(Sky.cyan).lineLimit(1)
+        if let line = insights.nextHoursSummary ?? insights.nextRainToday?.summary(in: tz) {
+            Text(line)
+                .font(.system(size: 10, weight: .semibold)).foregroundStyle(Sky.cyan)
+                .lineLimit(2).minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

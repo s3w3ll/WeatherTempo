@@ -71,6 +71,14 @@ extension WeatherInsights {
         }
     }
 
+    /// The dashboard chart's "Next 12 hours" sentence (rain, temperature trend, strong gusts),
+    /// for the large widget's status line.
+    public var nextHoursSummary: String? {
+        MeteogramModel(hours: upcomingHours(limit: MeteogramModel.nextHoursWindow + 1),
+                       pxPerHour: 1, now: now, timeZone: timeZone)
+            .nextHoursSummary()
+    }
+
     /// Hours from "now" onward for the widget chart (30 min grace, like the strip).
     public func upcomingHours(limit: Int) -> [Hour] {
         let from = payload.hourly.firstIndex { $0.validTimeUtc >= now.timeIntervalSince1970 - 1800 } ?? 0
