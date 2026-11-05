@@ -152,7 +152,7 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
     @Test func freshDataIsUsedAndCachedForTheApp() async {
         let c = cache()
         let store = InMemoryStore([DashboardModel.locationKey: "dunedin"])
-        let snap = await WidgetLoader.load(client: client(fail: false), cache: c, store: store, now: SampleData.referenceNow)
+        let snap = await WidgetLoader.load(client: client(fail: false), warningClient: fakeWarningClient(offline: true), cache: c, store: store, now: SampleData.referenceNow)
         #expect(snap.location.id == "dunedin")
         #expect(snap.payload != nil)
         #expect(snap.date == SampleData.referenceNow)
@@ -163,14 +163,50 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
         let c = cache()
         let saved = SampleData.payload()
         try? c.save(saved, locationID: "christchurch")
-        let snap = await WidgetLoader.load(client: client(fail: true), cache: c, store: InMemoryStore())
+        let snap = await WidgetLoader.load(client: client(fail: true), warningClient: fakeWarningClient(offline: true), cache: c, store: InMemoryStore())
         #expect(snap.payload == saved)
         #expect(snap.location.id == "christchurch")   // default when nothing stored
     }
 
     @Test func noNetworkAndNoCacheGivesAnEmptySnapshot() async {
-        let snap = await WidgetLoader.load(client: client(fail: true), cache: cache(), store: InMemoryStore())
+        let snap = await WidgetLoader.load(client: client(fail: true), warningClient: fakeWarningClient(offline: true), cache: cache(), store: InMemoryStore())
         #expect(snap.payload == nil)
+    }
+
+    @Test func warningsAreFetchedAndSavedForOfflineRefreshes() async throws {
+        let store = InMemoryStore()
+        let now = ISO8601DateFormatter().date(from: "2026-11-05T07:00:00Z")!
+        let online = await WidgetLoader.load(
+            client: client(fail: false), warningClient: fakeWarningClient(["w1": capXML(id: "w1")]),
+            cache: cache(), store: store, now: now)
+        #expect(online.warnings.map(\.id) == ["w1"])
+
+        // next refresh: MetService unreachable, the saved warning still shows
+        let offline = await WidgetLoader.load(
+            client: client(fail: true), warningClient: fakeWarningClient(offline: true),
+            cache: cache(), store: store, now: now)
+        #expect(offline.warnings.map(\.id) == ["w1"])
+
+        // and once it has expired, it's gone
+        let later = await WidgetLoader.load(
+            client: client(fail: true), warningClient: fakeWarningClient(offline: true),
+            cache: cache(), store: store, now: now.addingTimeInterval(3 * 86_400))
+        #expect(later.warnings.isEmpty)
+    }
+
+    @Test func entriesDropWarningsThatExpireDuringTheTimeline() throws {
+        let w = try #require(CAPParser.warning(capXML(id: "x", expires: "2026-11-05T20:20:00+13:00")))
+        let snap = WidgetSnapshot(location: .named("christchurch"), payload: nil,
+                                  date: ISO8601DateFormatter().date(from: "2026-11-05T07:00:00Z")!, warnings: [w])
+        #expect(WidgetLoader.entries(from: snap).map { $0.activeWarnings.count } == [1, 1, 0, 0])
+    }
+
+    @Test func spokenWarningsComeFirst() throws {
+        let w = try #require(CAPParser.warning(capXML(id: "s")))
+        let snap = WidgetSnapshot(location: .named("christchurch"), payload: nil,
+                                  date: ISO8601DateFormatter().date(from: "2026-11-05T07:00:00Z")!, warnings: [w])
+        #expect(spokenWarnings(snap.activeWarnings, snap)
+                == "Orange warning: Heavy Rain Warning - Orange, from Fri 9am to Sat 3am. ")
     }
 
     @Test func entriesStepEveryFifteenMinutes() {
@@ -230,6 +266,23 @@ private func h(_ off: Double, qpf: Double? = nil) -> Hour { Hour(validTimeUtc: s
         try save(try render(.lockRectangular, rainySnapshot, width: 172, height: 76), named: "widget-lock-rectangular")
         try save(try render(.lockCircular, .placeholder, width: 76, height: 76), named: "widget-lock-circular")
         try save(try render(.lockInline, .placeholder, width: 240, height: 24), named: "widget-lock-inline")
+    }
+
+    @Test func rendersMetServiceWarnings() throws {
+        let orange = try #require(CAPParser.warning(capXML(id: "o")))
+        let yellow = try #require(CAPParser.warning(capXML(id: "y", headline: "Strong Wind Watch", colour: "Yellow")))
+        let red = try #require(CAPParser.warning(capXML(id: "r", headline: "Heavy Rain Warning - Red", colour: "Red")))
+        var two = rainySnapshot
+        two.warnings = [orange, yellow]
+        var redOnly = rainySnapshot
+        redOnly.warnings = [red]
+        try save(try render(.small, redOnly, width: 170, height: 170), named: "widget-warning-small")
+        try save(try render(.medium, two, width: 364, height: 170), named: "widget-warning-medium")
+        try save(try render(.large, two, width: 364, height: 382), named: "widget-warning-large")
+        try save(try render(.large, redOnly, width: 329, height: 345), named: "widget-warning-large-small-phone")
+        try save(try render(.lockRectangular, two, width: 172, height: 76), named: "widget-warning-lock-rectangular")
+        try save(try render(.lockCircular, two, width: 76, height: 76), named: "widget-warning-lock-circular")
+        try save(try render(.lockInline, two, width: 240, height: 24), named: "widget-warning-lock-inline")
     }
 
     @Test func rendersNoDataState() throws {

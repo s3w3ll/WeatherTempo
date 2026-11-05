@@ -29,14 +29,7 @@ struct WarningsCard: View {
     /// The card takes the colour of its most severe alert.
     private var tint: Color { Self.color(warnings.map(\.level).max() ?? .yellow) }
 
-    static func color(_ level: WeatherWarning.Level) -> Color {
-        switch level {
-        // MetService's yellow (#FFEB18) vanishes on a light card, so a deeper amber stands in.
-        case .yellow: return Color(r: 226, g: 168, b: 0)
-        case .orange: return Color(r: 240, g: 120, b: 20)
-        case .red: return Color(r: 220, g: 40, b: 50)
-        }
-    }
+    static func color(_ level: WeatherWarning.Level) -> Color { ThemeRGB.warningFill(level).color }
 
     private func row(_ w: WeatherWarning) -> some View {
         let open = expanded.contains(w.id)
@@ -65,7 +58,7 @@ struct WarningsCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(levelName(w.level)): \(w.headline). \(w.timing(now: now, timeZone: timeZone)). \(w.areaDescription)")
+            .accessibilityLabel("\(w.level.spokenName): \(w.headline). \(w.timing(now: now, timeZone: timeZone)). \(w.areaDescription)")
             .accessibilityHint(open ? "Hides the details" : "Shows the details")
 
             if open {
@@ -82,14 +75,6 @@ struct WarningsCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 26)
             }
-        }
-    }
-
-    private func levelName(_ l: WeatherWarning.Level) -> String {
-        switch l {
-        case .yellow: return "Yellow alert"
-        case .orange: return "Orange warning"
-        case .red: return "Red warning"
         }
     }
 }

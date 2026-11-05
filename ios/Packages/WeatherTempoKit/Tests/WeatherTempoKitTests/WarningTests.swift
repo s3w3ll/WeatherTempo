@@ -210,3 +210,40 @@ func rssXML(_ ids: [String]) -> Data {
         #expect(s.warningsEnabled && s.rainEnabled)
     }
 }
+
+/// A MetService client that serves `alerts` (by id) from a feed listing them, without the
+/// network; `offline: true` fails every request.
+func fakeWarningClient(_ alerts: [String: Data] = [:], offline: Bool = false) -> WarningClient {
+    WarningClient { req in
+        if offline { throw URLError(.notConnectedToInternet) }
+        let url = req.url!.absoluteString
+        let ok = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        if url == WarningClient.feedURL.absoluteString { return (rssXML(alerts.keys.sorted()), ok) }
+        guard let d = alerts[String(url.split(separator: "=").last!)] else { throw URLError(.badServerResponse) }
+        return (d, ok)
+    }
+}
+
+@Suite struct WarningStoreTests {
+    @Test func roundTripsWithoutPolygonsAndDropsExpired() throws {
+        let store = InMemoryStore()
+        let current = try #require(CAPParser.warning(capXML(id: "now")))
+        let old = try #require(CAPParser.warning(capXML(id: "old", expires: "2026-11-05T12:00:00+13:00")))
+        WarningStore.save([current, old], locationID: "christchurch", in: store)
+        let back = WarningStore.load(locationID: "christchurch", in: store, now: thursdayEvening)
+        #expect(back.map(\.id) == ["now"])
+        #expect(back[0].polygons.isEmpty && back[0].headline == current.headline && back[0].expires == current.expires)
+        #expect(WarningStore.load(locationID: "dunedin", in: store, now: thursdayEvening).isEmpty)
+    }
+
+    @Test func shortHeadlineDropsTheColour() throws {
+        func w(_ h: String) -> WeatherWarning {
+            WeatherWarning(id: h, headline: h, event: "", level: .orange, onset: nil, expires: nil,
+                           areaDescription: "", details: "", polygons: [])
+        }
+        #expect(w("Heavy Rain Warning - Orange").shortHeadline == "Heavy Rain Warning")
+        #expect(w("Strong Wind Watch – yellow").shortHeadline == "Strong Wind Watch")
+        #expect(w("Severe Thunderstorm Watch").shortHeadline == "Severe Thunderstorm Watch")
+        #expect(w("Red").shortHeadline == "Red")
+    }
+}

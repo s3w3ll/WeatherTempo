@@ -70,7 +70,7 @@ struct WeatherTempoWidget: Widget {
             WeatherEntryView(entry: entry)
         }
         .configurationDisplayName("WeatherTempo")
-        .description("Current conditions and the forecast chart for your location.")
+        .description("Current conditions, MetService warnings and the forecast chart for your location.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge,
                             .accessoryRectangular, .accessoryCircular, .accessoryInline])
     }

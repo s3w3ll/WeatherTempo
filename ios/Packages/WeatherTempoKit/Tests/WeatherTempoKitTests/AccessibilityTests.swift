@@ -46,6 +46,13 @@ private let now = SampleData.referenceNow
         #expect(t.amberText.contrast(against: t.card) >= 4.5)
     }
 
+    @Test func warningBadgeTextMeetsAA() {
+        for level in WeatherWarning.Level.allCases {
+            let ratio = t.warningInk(level).contrast(against: t.warningFill(level))
+            #expect(ratio >= 4.5, "\(level) badge text is \(ratio)")
+        }
+    }
+
     @Test func widgetTextMeetsAAOnEveryStopOfTheSkyGradient() {
         for (stopName, stop) in [("top", t.skyTop), ("mid", t.skyMid), ("bottom", t.skyBottom)] {
             for (textName, c) in [("white", t.skyWhite), ("muted", t.skyMuted), ("cyan", t.skyCyan)] {

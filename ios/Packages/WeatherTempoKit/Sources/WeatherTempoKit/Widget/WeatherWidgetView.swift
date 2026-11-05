@@ -52,20 +52,21 @@ public struct WeatherWidgetView: View {
     public var body: some View {
         if let payload = snapshot.payload {
             let insights = WeatherInsights(payload: payload, now: snapshot.date, timeZone: snapshot.location.timeZone)
+            let warnings = snapshot.activeWarnings
             switch size {
             case .small:
-                SmallWidget(snapshot: snapshot, payload: payload, insights: insights)
+                SmallWidget(snapshot: snapshot, payload: payload, insights: insights, warning: warnings.first)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(summary(payload, insights))
+                    .accessibilityLabel(spokenWarnings(warnings, snapshot) + summary(payload, insights))
             case .medium:
-                MediumWidget(snapshot: snapshot, payload: payload, insights: insights)
+                MediumWidget(snapshot: snapshot, payload: payload, insights: insights, warnings: warnings)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(summary(payload, insights))
+                    .accessibilityLabel(spokenWarnings(warnings, snapshot) + summary(payload, insights))
             case .large:
-                LargeWidget(snapshot: snapshot, payload: payload, insights: insights)
-            case .lockRectangular: LockRectangular(payload: payload, insights: insights)
-            case .lockCircular: LockCircular(payload: payload, insights: insights)
-            case .lockInline: LockInline(payload: payload, insights: insights)
+                LargeWidget(snapshot: snapshot, payload: payload, insights: insights, warnings: warnings)
+            case .lockRectangular: LockRectangular(payload: payload, insights: insights, warning: warnings.first)
+            case .lockCircular: LockCircular(payload: payload, insights: insights, warning: warnings.first)
+            case .lockInline: LockInline(payload: payload, insights: insights, warning: warnings.first)
             }
         } else {
             Unavailable(size: size, location: snapshot.location)
@@ -80,6 +81,42 @@ private func summary(_ payload: WeatherPayload, _ insights: WeatherInsights) -> 
     var s = AccessibilityText.current(payload, insights)
     if let rain = insights.nextRainToday { s += " " + rain.summary(in: insights.timeZone) + "." }
     return s
+}
+
+/// Warnings first in what VoiceOver reads ("Orange warning: Heavy Rain Warning - Orange,
+/// from Fri 9am to Sat 3am. "), since they matter most.
+func spokenWarnings(_ warnings: [WeatherWarning], _ snapshot: WidgetSnapshot) -> String {
+    warnings.map { w in
+        let when = w.timing(now: snapshot.date, timeZone: snapshot.location.timeZone)
+        let lowered = when.prefix(1).lowercased() + String(when.dropFirst())
+        return "\(w.level.spokenName): \(w.headline), \(lowered). "
+    }.joined()
+}
+
+/// A MetService warning as a coloured badge: the level's colour as the fill, so the short
+/// headline (no "- Orange" suffix) still says which level it is.
+private struct WarningBadge: View {
+    let warning: WeatherWarning
+    var detail: String? = nil
+    var extra = 0
+    var fontSize: CGFloat = 10
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: fontSize - 1, weight: .bold))
+            Text(warning.shortHeadline).font(.system(size: fontSize, weight: .bold))
+                .lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
+            if let detail {
+                Text(detail).font(.system(size: fontSize, weight: .medium)).lineLimit(1)
+            }
+            if extra > 0 {
+                Text("+\(extra)").font(.system(size: fontSize, weight: .bold))
+            }
+        }
+        .foregroundStyle(ThemeRGB.warningInk(warning.level).color)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(ThemeRGB.warningFill(warning.level).color, in: Capsule())
+    }
 }
 
 private func temp(_ v: Double?) -> String { v.map { "\(Int($0.rounded()))°" } ?? "—" }
@@ -101,6 +138,7 @@ private struct SmallWidget: View {
     let snapshot: WidgetSnapshot
     let payload: WeatherPayload
     let insights: WeatherInsights
+    let warning: WeatherWarning?
 
     var body: some View {
         let c = payload.current
@@ -116,12 +154,17 @@ private struct SmallWidget: View {
                 .minimumScaleFactor(0.8).lineLimit(1)
             Text(conditionText(c)).font(.system(size: 12)).foregroundStyle(Sky.muted).lineLimit(1)
             Spacer(minLength: 2)
-            HStack {
-                Text("Feels \(temp(c.feelsLike))")
-                Spacer(minLength: 2)
-                Text(hiLo(insights, c))
+            // A warning takes the feels-like row: it's what matters while one is in force.
+            if let warning {
+                WarningBadge(warning: warning, fontSize: 9)
+            } else {
+                HStack {
+                    Text("Feels \(temp(c.feelsLike))")
+                    Spacer(minLength: 2)
+                    Text(hiLo(insights, c))
+                }
+                .font(.system(size: 10)).foregroundStyle(Sky.muted).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.system(size: 10)).foregroundStyle(Sky.muted).lineLimit(1).minimumScaleFactor(0.8)
         }
     }
 }
@@ -132,6 +175,7 @@ private struct MediumWidget: View {
     let snapshot: WidgetSnapshot
     let payload: WeatherPayload
     let insights: WeatherInsights
+    let warnings: [WeatherWarning]
 
     var body: some View {
         let c = payload.current
@@ -159,7 +203,12 @@ private struct MediumWidget: View {
                 }
             }
             Spacer(minLength: 4)
-            Text(updatedText(payload, snapshot.date)).font(.system(size: 9)).foregroundStyle(Sky.muted)
+            if let w = warnings.first {
+                WarningBadge(warning: w, detail: w.timing(now: snapshot.date, timeZone: snapshot.location.timeZone),
+                             extra: warnings.count - 1)
+            } else {
+                Text(updatedText(payload, snapshot.date)).font(.system(size: 9)).foregroundStyle(Sky.muted)
+            }
         }
     }
 
@@ -179,6 +228,7 @@ private struct LargeWidget: View {
     let snapshot: WidgetSnapshot
     let payload: WeatherPayload
     let insights: WeatherInsights
+    let warnings: [WeatherWarning]
 
     private var tz: TimeZone { snapshot.location.timeZone }
 
@@ -190,7 +240,7 @@ private struct LargeWidget: View {
                 rainLine
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(AccessibilityText.current(payload, insights)
+            .accessibilityLabel(spokenWarnings(warnings, snapshot) + AccessibilityText.current(payload, insights)
                                 + (insights.nextHoursSummary.map { " Next 12 hours: " + $0 } ?? ""))
             WidgetChart(insights: insights, now: snapshot.date, location: snapshot.location)
                 .accessibilityHidden(true)
@@ -213,13 +263,36 @@ private struct LargeWidget: View {
                 }
             }
             Spacer(minLength: 8)
-            HStack(alignment: .top, spacing: 14) {
-                column([("WIND", c.windSpeed.map { "\(Int($0.rounded())) km/h" } ?? "—"),
-                        ("UV", c.uvIndex.map { "\(Int($0.rounded()))" } ?? "—")])
-                column([("HUMIDITY", c.humidity.map { "\(Int($0.rounded()))%" } ?? "—"),
-                        ("PRESSURE", c.pressure.map { "\(Int($0.rounded())) hPa" } ?? "—")])
+            // The widget has no spare height, so a warning takes the stats' place (the chart
+            // below still shows wind and pressure).
+            if let w = warnings.first {
+                warningPanel(w)
+            } else {
+                HStack(alignment: .top, spacing: 14) {
+                    column([("WIND", c.windSpeed.map { "\(Int($0.rounded())) km/h" } ?? "—"),
+                            ("UV", c.uvIndex.map { "\(Int($0.rounded()))" } ?? "—")])
+                    column([("HUMIDITY", c.humidity.map { "\(Int($0.rounded()))%" } ?? "—"),
+                            ("PRESSURE", c.pressure.map { "\(Int($0.rounded())) hPa" } ?? "—")])
+                }
             }
         }
+    }
+
+    private func warningPanel(_ w: WeatherWarning) -> some View {
+        let more = warnings.count - 1
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10, weight: .bold))
+                Text(w.shortHeadline).font(.system(size: 12, weight: .bold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            Text(w.timing(now: snapshot.date, timeZone: tz)).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+            Text(more > 0 ? "+\(more) more · MetService" : "MetService")
+                .font(.system(size: 9, weight: .medium))
+        }
+        .foregroundStyle(ThemeRGB.warningInk(w.level).color)
+        .padding(.horizontal, 9).padding(.vertical, 6)
+        .frame(maxWidth: 210, alignment: .leading)
+        .background(ThemeRGB.warningFill(w.level).color, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func column(_ rows: [(String, String)]) -> some View {
@@ -293,6 +366,7 @@ private struct DailyStrip: View {
 private struct LockRectangular: View {
     let payload: WeatherPayload
     let insights: WeatherInsights
+    let warning: WeatherWarning?
 
     var body: some View {
         let c = payload.current
@@ -304,9 +378,15 @@ private struct LockRectangular: View {
             }
             .font(.headline)
             Text("H/L \(hiLo(insights, c))").font(.caption)
-            Text(insights.nextRainToday?.summary(in: insights.timeZone)
-                 ?? "Wind \(c.windSpeed.map { "\(Int($0.rounded()))" } ?? "—") km/h \(insights.currentWindCardinal)")
-                .font(.caption).lineLimit(1)
+            // The lock screen is one colour, so the full headline keeps the level ("- Orange").
+            if let warning {
+                Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(warning.headline)")
+                    .font(.caption.weight(.semibold)).lineLimit(1)
+            } else {
+                Text(insights.nextRainToday?.summary(in: insights.timeZone)
+                     ?? "Wind \(c.windSpeed.map { "\(Int($0.rounded()))" } ?? "—") km/h \(insights.currentWindCardinal)")
+                    .font(.caption).lineLimit(1)
+            }
         }
     }
 }
@@ -314,10 +394,16 @@ private struct LockRectangular: View {
 private struct LockCircular: View {
     let payload: WeatherPayload
     let insights: WeatherInsights
+    let warning: WeatherWarning?
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(insights.currentGlyph).font(.system(size: 18))
+            if let warning {
+                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 16, weight: .bold))
+                    .accessibilityLabel(warning.level.spokenName)
+            } else {
+                Text(insights.currentGlyph).font(.system(size: 18))
+            }
             Text(temp(payload.current.temp)).font(.system(size: 16, weight: .semibold))
         }
     }
@@ -326,9 +412,14 @@ private struct LockCircular: View {
 private struct LockInline: View {
     let payload: WeatherPayload
     let insights: WeatherInsights
+    let warning: WeatherWarning?
 
     var body: some View {
-        Text("\(insights.currentGlyph) \(temp(payload.current.temp)) \(conditionText(payload.current))")
+        if let warning {
+            Text("\(Image(systemName: "exclamationmark.triangle.fill")) \(temp(payload.current.temp)) \(warning.headline)")
+        } else {
+            Text("\(insights.currentGlyph) \(temp(payload.current.temp)) \(conditionText(payload.current))")
+        }
     }
 }
 

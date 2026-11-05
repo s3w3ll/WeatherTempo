@@ -10,6 +10,15 @@ public struct WeatherWarning: Codable, Equatable, Identifiable, Sendable {
         public static func < (a: Level, b: Level) -> Bool { a.rank < b.rank }
         private var rank: Int { switch self { case .yellow: 0; case .orange: 1; case .red: 2 } }
 
+        /// What VoiceOver says for the colour.
+        public var spokenName: String {
+            switch self {
+            case .yellow: return "Yellow alert"
+            case .orange: return "Orange warning"
+            case .red: return "Red warning"
+            }
+        }
+
         /// From the CAP `ColourCode` parameter, falling back to the CAP severity.
         init(colourCode: String?, severity: String?) {
             switch colourCode?.lowercased() {

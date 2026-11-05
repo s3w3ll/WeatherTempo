@@ -64,6 +64,27 @@ enum ThemeRGB {
     static let skyCyan = RGB(135, 226, 248)
     static let amberText = RGB(133, 77, 0)
 
+    // MetService warning colours. MetService's own yellow (#FFEB18) vanishes on a light card,
+    // so a deeper amber stands in. `warningInk` is the text drawn on each as a fill (widget
+    // badges), >= 4.5:1 in AccessibilityContrastTests.
+    static let warningYellow = RGB(226, 168, 0)
+    static let warningOrange = RGB(240, 120, 20)
+    static let warningRed = RGB(220, 40, 50)
+    static let warningDarkInk = RGB(36, 22, 0)
+    static let warningLightInk = RGB(255, 255, 255)
+
+    static func warningFill(_ level: WeatherWarning.Level) -> RGB {
+        switch level {
+        case .yellow: return warningYellow
+        case .orange: return warningOrange
+        case .red: return warningRed
+        }
+    }
+
+    static func warningInk(_ level: WeatherWarning.Level) -> RGB {
+        level == .red ? warningLightInk : warningDarkInk
+    }
+
     /// Dark-mode twins. Text keeps >= 4.5:1 on `Dark.card` (AccessibilityContrastTests).
     enum Dark {
         static let page = RGB(13, 19, 30)

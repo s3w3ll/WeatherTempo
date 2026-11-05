@@ -52,6 +52,7 @@ private actor Requests {
         let at = clockAt ?? now
         let model = DashboardModel(
             client: client(requests: requests, updated: at, fail: fail, delay: delay),
+            warningClient: fakeWarningClient(offline: true),
             cache: cache, store: store, clock: { at })
         return (model, cache, store)
     }

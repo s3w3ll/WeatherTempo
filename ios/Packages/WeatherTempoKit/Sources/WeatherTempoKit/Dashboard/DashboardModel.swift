@@ -100,6 +100,7 @@ public final class DashboardModel {
         self.location = Location.named(store.loadString(Self.locationKey))
         self.chartDays = store.loadString(Self.chartDaysKey)
             .flatMap(Int.init).flatMap { Self.validChartDays.contains($0) ? $0 : nil } ?? Self.defaultChartDays
+        self.warnings = WarningStore.load(locationID: location.id, in: store, now: clock())
     }
 
     public var isRefreshing: Bool { inFlight > 0 }
@@ -160,7 +161,10 @@ public final class DashboardModel {
         }
 
         if let fresh = await fetchedWarnings, gen == generation {
+            let changed = fresh.map(\.id) != warnings.map(\.id)
             warnings = fresh
+            WarningStore.save(fresh, locationID: target.id, in: store)
+            if changed { reloadWidgets() }      // a new or lifted warning shouldn't wait for the widget's own refresh
             onWarnings?(fresh, target)
         }
     }
@@ -173,7 +177,7 @@ public final class DashboardModel {
         location = newLocation
         store.saveString(newLocation.id, for: Self.locationKey)
         payload = cache.load(locationID: newLocation.id)    // may be nil: the view shows a loading state
-        warnings = []
+        warnings = WarningStore.load(locationID: newLocation.id, in: store, now: clock())
         lastRefreshFailed = false
         reloadWidgets()
         await refresh()
