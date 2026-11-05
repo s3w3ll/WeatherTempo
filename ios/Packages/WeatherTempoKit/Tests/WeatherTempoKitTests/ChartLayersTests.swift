@@ -112,6 +112,35 @@ private func model(_ hours: [Hour], layout: ChartLayout = .web) -> MeteogramMode
         #expect(model([sky(0, "D", cloud: -5), sky(1, "D", cloud: 140)]).sunshine == [1, 0])
     }
 
+    @Test func withCoordinatesTheSunriseHourCountsAsPartlySunny() {
+        let chc = Location.named(Location.defaultID)
+        // 3 Nov, Christchurch: sun up ~6:05am, so 5am is dark, 6am mostly up, noon fully up.
+        let hours = (0..<24).map { sky($0, "D", cloud: 0) }
+        let m = MeteogramModel(hours: hours, pxPerHour: 8, now: SampleData.referenceStart,
+                               latitude: chc.lat, longitude: chc.lon)
+        #expect(m.daylightFraction(5) == 0)
+        #expect(m.daylightFraction(6) >= 0.5)
+        #expect(m.daylightFraction(12) == 1)
+        #expect(m.daylightFraction(23) == 0)   // the flag says "D", the sun says night
+        let total = m.sunshine.reduce(0, +)
+        #expect(total > 13.5 && total < 15)    // ~14.2 h of daylight on a clear day
+    }
+
+    @Test func glowRampsUpAfterSunriseAndFollowsTheCloud() throws {
+        let chc = Location.named(Location.defaultID)
+        let hours = (0..<24).map { sky($0, "D", cloud: $0 < 12 ? 0 : 100) }
+        let m = MeteogramModel(hours: hours, pxPerHour: 8, now: SampleData.referenceStart,
+                               latitude: chc.lat, longitude: chc.lon)
+        let g = m.glowStops
+        #expect(g.count == 24 * 4 + 1)
+        let at = { (h: Double) in g[Int(h * 4)].value }
+        #expect(at(5) == 0)                       // before sunrise
+        #expect(at(6.5) > 0 && at(6.5) < 1)       // low sun: partial glow
+        #expect(at(9) == 1)                       // clear, sun well up
+        #expect(abs(at(12) - 0.5) < 1e-9)         // halfway between clear 11am and overcast noon centres
+        #expect(at(15) == 0)                      // overcast
+    }
+
     @Test func gradientStopsSitAtHourCentresInOrder() {
         let m = model((0..<24).map { sky($0, "D", cloud: 0) })
         let s = m.hourStopLocations

@@ -189,13 +189,62 @@ public struct MeteogramModel: Equatable {
 
     // MARK: Sunshine
 
-    /// How sunny each hour is, 0...1: daylight with the cloud taken out. Night is 0, a
-    /// clear daytime hour 1, a half-cloudy one 0.5. Unknown cloud counts as no sun, so
-    /// missing data never paints a sunny glow.
+    /// How sunny each hour is, 0...1: the part of the hour the sun is up, with the cloud
+    /// taken out. Night is 0, a clear daytime hour 1, a half-cloudy one 0.5. Unknown cloud
+    /// counts as no sun, so missing data never paints a sunny glow.
     public var sunshine: [Double] {
-        hours.map { h in
-            guard h.dayOrNight == "D", let c = h.cloudCover else { return 0 }
+        hours.indices.map { i in
+            guard let c = hours[i].cloudCover else { return 0 }
+            return daylightFraction(i) * (1 - min(max(c, 0), 100) / 100)
+        }
+    }
+
+    /// Share of hour `i` with the sun above the horizon. With coordinates, from the sun's
+    /// position at four points through the hour (so the sunrise hour counts as ~half);
+    /// without, from the hour's day/night flag.
+    public func daylightFraction(_ i: Int) -> Double {
+        guard let lat = latitude, let lon = longitude else { return hours[i].dayOrNight == "D" ? 1 : 0 }
+        let t = hours[i].validTimeUtc
+        let up = [450.0, 1350, 2250, 3150].filter {
+            SolarPosition.elevation(at: Date(timeIntervalSince1970: t + $0), latitude: lat, longitude: lon) > -0.833
+        }
+        return Double(up.count) / 4
+    }
+
+    /// Strength (0...1) of the background's sunshine glow along the chart, as (x, value)
+    /// stops. Without coordinates: one stop per hour centre from `sunshine`. With them: a stop
+    /// every 15 minutes, cloud blended between hour centres and the glow scaled by the sun's
+    /// height, so it brightens through the hour after sunrise and fades into sunset rather
+    /// than switching on the hour.
+    public var glowStops: [(x: Double, value: Double)] {
+        guard let lat = latitude, let lon = longitude, let first = hours.first else {
+            return zip(hours.indices, sunshine).map { (hourX($0), $1) }
+        }
+        let t0 = first.validTimeUtc
+        let steps = hours.count * 4
+        return (0...steps).map { k in
+            let hoursIn = Double(k) / 4                          // hours from the series start
+            let e = SolarPosition.elevation(at: Date(timeIntervalSince1970: t0 + hoursIn * 3600), latitude: lat, longitude: lon)
+            let light = min(max((e + 0.833) / Self.fullGlowElevation, 0), 1)
+            return (ChartPad.left + hoursIn * pxPerHour, light * clearSky(atHour: hoursIn))
+        }
+    }
+
+    /// Sun height (degrees above sunrise's -0.833°) at which the glow reaches full strength.
+    static let fullGlowElevation = 10.0
+
+    /// 1 - cloud, blended linearly between hour centres; 0 where cloud is unknown.
+    func clearSky(atHour h: Double) -> Double {
+        func clear(_ i: Int) -> Double? {
+            guard hours.indices.contains(i), let c = hours[i].cloudCover else { return nil }
             return 1 - min(max(c, 0), 100) / 100
+        }
+        let a = Int((h - 0.5).rounded(.down)), f = h - 0.5 - Double(a)
+        switch (clear(a), clear(a + 1)) {
+        case let (x?, y?): return x + (y - x) * f
+        case let (x?, nil): return x
+        case let (nil, y?): return y
+        default: return 0
         }
     }
 

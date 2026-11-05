@@ -67,6 +67,27 @@ private func model(_ hs: [Hour], pph: Double = 8) -> MeteogramModel {
         #expect(m.visibleFraction(scrollX: -50, viewport: 9999) == 0...1)   // clamped
     }
 
+    @Test func defaultVisibleWindowOpensWithNowThirtyPercentIn() {
+        // 120 h, now = hour 0 -> window clamps to the start: 2 days = 48 h = 0...0.4
+        let m = model(SampleData.hours(count: 120))
+        #expect(m.defaultVisibleFraction(days: 2) == 0...0.4)
+        #expect(m.defaultVisibleFraction(days: 9) == 0...1)          // longer than the series
+        let mid = MeteogramModel(hours: SampleData.hours(count: 120), pxPerHour: 8,
+                                 now: Date(timeIntervalSince1970: t0 + 60 * 3600))
+        let f = mid.defaultVisibleFraction(days: 2)
+        #expect(abs((f.upperBound - f.lowerBound) - 0.4) < 1e-9)
+        #expect(abs(f.lowerBound * 120 - (60.5 - 48 * 0.3)) < 1e-9)
+        #expect(model([]).defaultVisibleFraction(days: 2) == 0...1)
+    }
+
+    @Test func browsingCentresTheWindowOnTheFinger() {
+        let m = model(SampleData.hours(count: 120))
+        #expect(m.browseStartHour(fraction: 0.5, days: 2) == 36)      // centre 60 - 24
+        #expect(m.browseStartHour(fraction: 0, days: 2) == 0)         // clamped at the start
+        #expect(m.browseStartHour(fraction: 1, days: 2) == 72)        // and at the end
+        #expect(m.browseStartHour(fraction: 0.7, days: 5) == 0)       // whole series visible
+    }
+
     @Test func initialScrollStaysInsideTheContent() {
         let m = model(hours(48))
         #expect(m.initialScrollX(viewport: 9999) == 0)

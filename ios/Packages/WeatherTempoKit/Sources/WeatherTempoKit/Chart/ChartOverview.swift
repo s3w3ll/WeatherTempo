@@ -73,6 +73,28 @@ extension MeteogramModel {
         min(max(0, hourX(nowIndex) - viewport * 0.3), max(0, width - viewport))
     }
 
+    /// Hours visible at a `days` zoom (the whole series if it's shorter).
+    public func visibleHours(days: Int) -> Int { min(hours.count, max(1, days) * 24) }
+
+    /// The visible fraction before the chart has reported its scroll position: the window
+    /// `initialScrollX` opens on ("now" 30 % in), worked out in hours so it needs no widths.
+    public func defaultVisibleFraction(days: Int) -> ClosedRange<Double> {
+        let total = Double(hours.count)
+        guard total > 0 else { return 0...1 }
+        let vis = Double(visibleHours(days: days))
+        let start = min(max(0, Double(nowIndex) + 0.5 - vis * 0.3), total - vis)
+        return start / total ... (start + vis) / total
+    }
+
+    /// Dragging the week strip: the first hour to scroll to so the chart window is centred
+    /// on the finger (`fraction` of the series), kept inside the series.
+    public func browseStartHour(fraction: Double, days: Int) -> Int {
+        let vis = visibleHours(days: days)
+        let centre = min(max(fraction, 0), 1) * Double(hours.count)
+        let start = Int((centre - Double(vis) / 2).rounded())
+        return min(max(0, start), max(0, hours.count - vis))
+    }
+
     // MARK: Pressure trend
 
     /// Pressure tendency over the previous three hours, in the bands marine and aviation

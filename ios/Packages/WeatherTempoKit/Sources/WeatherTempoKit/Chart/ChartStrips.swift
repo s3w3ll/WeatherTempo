@@ -1,53 +1,82 @@
 import SwiftUI
 
 /// The whole forecast in one row: a column per day (width proportional to its hours) with
-/// the weather glyph, high/low and a temperature-range bar on a shared scale. A frame shows
-/// which part the chart below is showing; tapping a day scrolls the chart there.
+/// the weather glyph, high/low, a temperature-range bar on a shared scale and sunshine hours.
+/// A frame shows which part the chart below is showing; tap a day to jump there, or drag
+/// along the strip to browse.
+///
+/// Sized by its content (no fixed height): iPhone caption fonts are taller than the Mac
+/// ones the CI snapshots use, and Dynamic Type makes them taller still.
 struct WeekOverviewStrip: View {
-    static let height: Double = 90
-
     let model: MeteogramModel
     /// The visible part of the chart, as fractions of all hours.
     let visible: ClosedRange<Double>
     var onSelectDay: (MeteogramModel.WeekDay) -> Void = { _ in }
+    /// Drag along the strip: the fraction (0...1) of the series under the finger.
+    var onBrowse: ((Double) -> Void)? = nil
+
+    @State private var stripWidth: Double = 0
 
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let total = Double(max(model.hours.count, 1))
-            let days = model.weekDays
-            let range = model.weekTemperatureRange
-
-            ZStack(alignment: .topLeading) {
-                HStack(spacing: 0) {
-                    ForEach(days) { day in
-                        Button { onSelectDay(day) } label: {
-                            column(day, range: range, width: w * Double(day.hourCount) / total)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(accessibility(day))
-                        .accessibilityHint("Shows this day on the chart")
-                    }
-                }
-
-                // Viewport frame
-                let x0 = visible.lowerBound * w
-                let fw = max(8, (visible.upperBound - visible.lowerBound) * w)
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Theme.strong.opacity(0.55), lineWidth: 1.5)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.strong.opacity(0.05)))
-                    .frame(width: fw, height: Self.height)
-                    .offset(x: min(x0, w - fw))
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+        let range = model.weekTemperatureRange
+        ProportionalHStack {
+            ForEach(model.weekDays) { day in
+                Button { onSelectDay(day) } label: { column(day, range: range) }
+                    .buttonStyle(.plain)
+                    .layoutValue(key: ColumnWeight.self, value: Double(day.hourCount))
+                    .accessibilityLabel(accessibility(day))
+                    .accessibilityHint("Shows this day on the chart")
             }
         }
-        .frame(height: Self.height)
+        .overlay(alignment: .topLeading) { viewportFrame }
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { stripWidth = g.size.width }
+                .onChange(of: g.size.width) { _, w in stripWidth = w }
+        })
+        .simultaneousGesture(browseGesture)
     }
 
-    private func column(_ day: MeteogramModel.WeekDay, range: ClosedRange<Double>?, width: Double) -> some View {
-        let roomy = width >= 44
-        return VStack(spacing: 1) {
+    /// Outline of the part of the series the chart is showing.
+    private var viewportFrame: some View {
+        GeometryReader { g in
+            let w = g.size.width
+            let x0 = visible.lowerBound * w
+            let fw = max(8, (visible.upperBound - visible.lowerBound) * w)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Theme.strong.opacity(0.55), lineWidth: 1.5)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.strong.opacity(0.05)))
+                .frame(width: fw, height: g.size.height)
+                .offset(x: min(x0, w - fw))
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Horizontal drags browse; mostly-vertical ones are left to the page scroll.
+    private var browseGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { v in
+                guard let onBrowse, stripWidth > 0,
+                      abs(v.translation.width) > abs(v.translation.height) else { return }
+                onBrowse(min(max(v.location.x / stripWidth, 0), 1))
+            }
+    }
+
+    private func column(_ day: MeteogramModel.WeekDay, range: ClosedRange<Double>?) -> some View {
+        // The full column where it fits, else a one-letter day with the glyph and bar only.
+        ViewThatFits(in: .horizontal) {
+            columnBody(day, range: range, roomy: true)
+            columnBody(day, range: range, roomy: false)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 6)
+        .padding(.bottom, 5)
+        .contentShape(Rectangle())
+    }
+
+    private func columnBody(_ day: MeteogramModel.WeekDay, range: ClosedRange<Double>?, roomy: Bool) -> some View {
+        VStack(spacing: 2) {
             Text(roomy ? day.label : String(day.label.prefix(1)))
                 .font(.caption2.weight(.semibold)).foregroundStyle(Theme.muted)
             Text(day.glyph).font(.system(size: 14))
@@ -56,18 +85,16 @@ struct WeekOverviewStrip: View {
                     .font(.caption2.weight(.semibold)).foregroundStyle(Theme.warmText)
             }
             rangeBar(day, range: range)
-                .frame(width: max(4, min(width - 10, 26)), height: 22)
+                .frame(width: roomy ? 26 : 4, height: 22)
             if roomy {
                 Text(NumberFormat.rounded(day.low, suffix: "°"))
                     .font(.caption2).foregroundStyle(Theme.cyanText)
                 Text("☀︎\(Self.sunHours(day.sunshineHours))")
-                    .font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.muted)
+                    .font(.caption2.weight(.semibold)).foregroundStyle(Theme.muted)
             }
         }
         .lineLimit(1)
-        .padding(.vertical, 4)
-        .frame(width: width, height: Self.height)
-        .contentShape(Rectangle())
+        .fixedSize()
     }
 
     /// Vertical bar from the day's low to its high on the week's shared scale, warm to cool.
@@ -99,6 +126,38 @@ struct WeekOverviewStrip: View {
         if let l = d.low { s += ", low \(Int(l.rounded())) degrees" }
         if let c = d.maxChance, c >= 20 { s += ", \(Int(c.rounded())) percent chance of rain" }
         return s
+    }
+}
+
+private struct ColumnWeight: LayoutValueKey {
+    static let defaultValue: Double = 1
+}
+
+/// HStack whose children get widths proportional to their `ColumnWeight` (the day's hours)
+/// and whose height is the tallest child's: the strip lines up with the chart's time scale
+/// yet still grows with the text inside it.
+struct ProportionalHStack: Layout {
+    private func widths(_ total: Double, _ subviews: Subviews) -> [Double] {
+        let weights = subviews.map { max(0, $0[ColumnWeight.self]) }
+        let sum = weights.reduce(0, +)
+        return weights.map { sum > 0 ? total * $0 / sum : 0 }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = proposal.width ?? 320
+        let h = zip(subviews, widths(w, subviews))
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        return CGSize(width: w, height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (s, w) in zip(subviews, widths(bounds.width, subviews)) {
+            s.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                    proposal: ProposedViewSize(width: w, height: bounds.height))
+            x += w
+        }
     }
 }
 

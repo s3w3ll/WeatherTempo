@@ -101,12 +101,12 @@ public enum MeteogramRenderer {
 
         // Sunshine: a warm glow over the sky part of the main zone, as strong as the hour is
         // clear. Brightest at the top, fading towards the temperature floor.
-        let sun = m.sunshine
-        if sun.contains(where: { $0 > 0 }) {
+        let glow = m.glowStops
+        if glow.contains(where: { $0.value > 0 }) {
             let rect = Path(CGRect(x: 0, y: 0, width: w, height: m.layout.tempBot))
             ctx.drawLayer { layer in
                 layer.fill(rect, with: horizontalGradient(
-                    zip(stops, sun).map { ($0, p.sunGlow.opacity($1)) }, width: w))
+                    glow.map { (min(max($0.x / w, 0), 1), p.sunGlow.opacity($0.value)) }, width: w))
                 layer.blendMode = .destinationIn
                 layer.fill(rect, with: verticalGradient(
                     [(0, .black), (0.55, .black.opacity(0.6)), (1, .black.opacity(0.15))],

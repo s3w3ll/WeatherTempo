@@ -43,9 +43,10 @@ struct MeteogramHoverLayer: View {
 ///
 /// - `days` is the zoom: that many days exactly fill the viewport. The chart always holds the
 ///   whole forecast, so 5 days needs no scrolling and 2 days scrolls to reach the rest.
-/// - Scrolls horizontally, starting with "now" about 30 % in from the left (`scrollToNow`).
+/// - Scrolls horizontally, starting with "now" about 30 % in from the left.
 /// - Tap an hour, or press and drag, to inspect it. The details show in a strip above the
 ///   chart rather than a floating tooltip, because a finger would cover a tooltip.
+/// - The week strip on top follows the scroll; tap a day or drag along it to move the chart.
 public struct MeteogramView: View {
     private let hours: [WeatherPayload.Hour]
     private let days: Int
@@ -55,9 +56,17 @@ public struct MeteogramView: View {
     private let longitude: Double?
 
     @State private var selected: Int?
-    /// Current horizontal scroll position of the chart (nil until first reported).
-    @State private var scrollX: Double?
+    /// Visible part of the chart as fractions of the series (nil until the scroll view reports).
+    @State private var visible: ClosedRange<Double>?
+    /// A request for the chart to scroll so `hour` is at the left edge.
+    @State private var scrollRequest: ScrollRequest?
     @Environment(\.staticRender) private var staticRender
+
+    struct ScrollRequest: Equatable {
+        let hour: Int
+        let animated: Bool
+        let id = UUID()
+    }
 
     public init(
         hours: [WeatherPayload.Hour],
@@ -75,13 +84,24 @@ public struct MeteogramView: View {
         self.longitude = longitude
     }
 
-    /// Everything inside the GeometryReader: week strip, detail strip, chart, pressure strip.
-    static var contentHeight: Double {
-        WeekOverviewStrip.height + 8 + HourDetailStrip.height + 8 + ChartZone.height + 2 + PressureTrendStrip.height
-    }
+    /// The scrolling part: chart plus the pressure strip under it.
+    static var chartHeight: Double { ChartZone.height + 2 + PressureTrendStrip.height }
 
     public var body: some View {
+        // The strips only need the hours, not pixel widths, so they live outside the
+        // GeometryReader and size themselves to their text.
+        let overview = MeteogramModel(hours: hours, pxPerHour: 1, now: now, timeZone: timeZone,
+                                      latitude: latitude, longitude: longitude)
         VStack(alignment: .leading, spacing: 8) {
+            WeekOverviewStrip(
+                model: overview,
+                visible: visible ?? overview.defaultVisibleFraction(days: days),
+                onSelectDay: { scrollRequest = ScrollRequest(hour: $0.startIndex, animated: true) },
+                onBrowse: staticRender ? nil : { f in
+                    let hour = overview.browseStartHour(fraction: f, days: days)
+                    if scrollRequest?.hour != hour { scrollRequest = ScrollRequest(hour: hour, animated: false) }
+                })
+            HourDetailStrip(model: overview, index: selected)
             GeometryReader { geo in
                 let model = MeteogramModel(
                     hours: hours,
@@ -89,10 +109,11 @@ public struct MeteogramView: View {
                     now: now, timeZone: timeZone, latitude: latitude, longitude: longitude)
                 chart(model, viewport: geo.size.width)
             }
-            .frame(height: Self.contentHeight)
+            .frame(height: Self.chartHeight)
 
             MeteogramLegend()
         }
+        .onChange(of: days) { _, _ in visible = nil }
     }
 
     @ViewBuilder
@@ -100,52 +121,47 @@ public struct MeteogramView: View {
         if staticRender {
             // Image rendering: show the window a user would see on first appearance
             // ("now" 30 % in from the left) instead of a ScrollView.
-            let scrollX = model.initialScrollX(viewport: viewport)
-            VStack(alignment: .leading, spacing: 8) {
-                WeekOverviewStrip(model: model, visible: model.visibleFraction(scrollX: scrollX, viewport: viewport))
-                HourDetailStrip(model: model, index: selected)
-                VStack(alignment: .leading, spacing: 2) {
-                    MeteogramCanvas(model: model)
-                    PressureTrendStrip(model: model)
-                }
-                .accessibilityHidden(true)
-                .offset(x: -scrollX)
-                .frame(width: viewport, height: model.height + 2 + PressureTrendStrip.height, alignment: .leading)
-                .clipped()
+            VStack(alignment: .leading, spacing: 2) {
+                MeteogramCanvas(model: model)
+                PressureTrendStrip(model: model)
             }
+            .accessibilityHidden(true)
+            .offset(x: -model.initialScrollX(viewport: viewport))
+            .frame(width: viewport, height: Self.chartHeight, alignment: .leading)
+            .clipped()
         } else {
             ScrollViewReader { proxy in
-                VStack(alignment: .leading, spacing: 8) {
-                    WeekOverviewStrip(
-                        model: model,
-                        visible: model.visibleFraction(scrollX: scrollX ?? model.initialScrollX(viewport: viewport), viewport: viewport),
-                        onSelectDay: { day in
-                            withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo("day-\(day.startIndex)", anchor: .leading) }
-                        })
-                    HourDetailStrip(model: model, index: selected)
-                    scroller(model)
-                }
-                .onAppear { proxy.scrollTo("now", anchor: UnitPoint(x: 0.3, y: 0.5)) }
+                scroller(model, viewport: viewport)
+                    .onAppear { proxy.scrollTo("now", anchor: UnitPoint(x: 0.3, y: 0.5)) }
+                    .onChange(of: scrollRequest) { _, request in
+                        guard let request else { return }
+                        if request.animated {
+                            withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo("h-\(request.hour)", anchor: .leading) }
+                        } else {
+                            proxy.scrollTo("h-\(request.hour)", anchor: .leading)
+                        }
+                    }
             }
             .id(days)   // changing the zoom rebuilds the scroll view, which re-anchors on "now"
         }
     }
 
-    private func scroller(_ model: MeteogramModel) -> some View {
+    private func scroller(_ model: MeteogramModel, viewport: Double) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 2) {
                 ZStack(alignment: .topLeading) {
                     MeteogramCanvas(model: model).equatable()
                     MeteogramHoverLayer(model: model, index: selected)
-                    // Invisible anchors: "now" for the first appearance, one per day for the week strip.
-                    // (padding, not offset: scrollTo uses the layout frame, which offset doesn't move)
+                    // Invisible anchors: "now" for the first appearance, one per hour start for
+                    // the week strip. (padding, not offset: scrollTo uses the layout frame,
+                    // which offset doesn't move)
                     Color.clear.frame(width: 1, height: 1)
                         .id("now")
                         .padding(.leading, model.hourX(model.nowIndex))
-                    ForEach(model.weekDays) { day in
+                    ForEach(model.hours.indices, id: \.self) { i in
                         Color.clear.frame(width: 1, height: 1)
-                            .id("day-\(day.startIndex)")
-                            .padding(.leading, max(0, model.hourX(day.startIndex) - model.pxPerHour / 2))
+                            .id("h-\(i)")
+                            .padding(.leading, ChartPad.left + Double(i) * model.pxPerHour)
                     }
                 }
                 .frame(width: model.width, height: model.height)
@@ -177,7 +193,9 @@ public struct MeteogramView: View {
             })
         }
         .coordinateSpace(name: "chartScroll")
-        .onPreferenceChange(ChartScrollOffsetKey.self) { scrollX = $0 }
+        .onPreferenceChange(ChartScrollOffsetKey.self) { x in
+            visible = model.visibleFraction(scrollX: x, viewport: viewport)
+        }
     }
 
     // MARK: Gestures
@@ -214,43 +232,56 @@ private struct ChartScrollOffsetKey: PreferenceKey {
     static func reduce(value: inout Double, nextValue: () -> Double) { value = nextValue() }
 }
 
-/// The hover tooltip's content, pinned above the chart.
+/// The hover tooltip's content, pinned above the chart. With nothing selected it shows the
+/// "next 12 hours" summary instead.
+///
+/// Its height is always that of the selected-hour layout (laid out invisibly underneath), so
+/// the chart doesn't jump when you tap, and nothing is squashed at large text sizes.
 struct HourDetailStrip: View {
-    /// Fixed so the layout doesn't jump when an hour is selected.
-    static let height: Double = 92
-
     let model: MeteogramModel
     let index: Int?
 
     private let columns = Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: 3)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        ZStack(alignment: .topLeading) {
+            if !model.hours.isEmpty {
+                details(min(model.nowIndex, model.hours.count - 1)).hidden().accessibilityHidden(true)
+            }
             if let index, model.hours.indices.contains(index) {
-                Text(model.detailTitle(for: index)).font(.caption.bold())
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 2) {
-                    ForEach(model.detailRows(for: index), id: \.label) { row in
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(row.label).scaledFont(9, relativeTo: .caption).foregroundStyle(.secondary)
-                            Text(row.value).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
-                        }
-                    }
-                }
+                details(index)
             } else {
-                // Nothing selected: use the space for what's coming up.
-                if let summary = model.nextHoursSummary() {
-                    Text("Next \(MeteogramModel.nextHoursWindow) hours").font(.caption.bold())
-                    Text(summary)
-                        .font(.footnote).foregroundStyle(Theme.text)
-                        .lineLimit(3).minimumScaleFactor(0.8)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                Text("Tap or press and drag on the chart to inspect an hour")
-                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                idle
             }
         }
-        .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func details(_ index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(model.detailTitle(for: index)).font(.caption.bold())
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 2) {
+                ForEach(model.detailRows(for: index), id: \.label) { row in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(row.label).scaledFont(9, relativeTo: .caption).foregroundStyle(.secondary)
+                        Text(row.value).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                }
+            }
+        }
+    }
+
+    private var idle: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let summary = model.nextHoursSummary() {
+                Text("Next \(MeteogramModel.nextHoursWindow) hours").font(.caption.bold())
+                Text(summary)
+                    .font(.footnote).foregroundStyle(Theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Tap or press and drag on the chart to inspect an hour")
+                .font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+        }
     }
 }
 
