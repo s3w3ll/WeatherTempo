@@ -48,8 +48,11 @@ import UniformTypeIdentifiers
         return MeteogramModel(
             hours: hours,
             pxPerHour: MeteogramModel.pxPerHour(viewportWidth: viewport, days: days),
-            now: SampleData.referenceStart.addingTimeInterval(14 * 3600))
+            now: SampleData.referenceStart.addingTimeInterval(14 * 3600),
+            latitude: christchurch.lat, longitude: christchurch.lon)
     }
+
+    private var christchurch: Location { Location.named(Location.defaultID) }
 
     @Test func rendersTwoDayChart() throws {
         let m = model(days: 2)

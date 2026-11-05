@@ -122,6 +122,52 @@ private func model(_ hours: [Hour], layout: ChartLayout = .web) -> MeteogramMode
     }
 }
 
+@Suite struct TwilightTests {
+    private let chc = Location.named(Location.defaultID)
+
+    private func utc(_ y: Int, _ mo: Int, _ d: Int, _ h: Double, tz: TimeZone = TimeZone(identifier: "UTC")!) -> Date {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = tz
+        return cal.date(from: DateComponents(year: y, month: mo, day: d))!.addingTimeInterval(h * 3600)
+    }
+
+    @Test func sunIsOverheadAtTheEquatorAtAnEquinoxNoon() {
+        // 20 Mar 2026, solar noon on the Greenwich meridian is ~12:07 UTC
+        let e = SolarPosition.elevation(at: utc(2026, 3, 20, 12 + 7.0 / 60), latitude: 0, longitude: 0)
+        #expect(e > 88)
+    }
+
+    @Test func christchurchEarlyNovember() {
+        let nz = MeteogramModel.nzTimeZone
+        // Midday sun about 90 - (43.5 - 15) ≈ 61.5° at solar noon (~1:20pm NZDT); well below at midnight.
+        let noon = SolarPosition.elevation(at: utc(2026, 11, 3, 13 + 20.0 / 60, tz: nz), latitude: chc.lat, longitude: chc.lon)
+        #expect(noon > 58 && noon < 65)
+        let midnight = SolarPosition.elevation(at: utc(2026, 11, 3, 0, tz: nz), latitude: chc.lat, longitude: chc.lon)
+        #expect(midnight < -25)
+    }
+
+    @Test func stopsRunNightTwilightDayAndBackAtTheRealTimes() throws {
+        let hours = (0..<24).map { Hour(validTimeUtc: t0 + Double($0) * 3600, temperature: 10) }
+        let m = MeteogramModel(hours: hours, pxPerHour: 10, now: SampleData.referenceStart,
+                               latitude: chc.lat, longitude: chc.lon)
+        let stops = try #require(m.skyStops)
+        #expect(stops.map(\.phase) == [.night, .night, .twilight, .day, .day, .twilight, .night, .night])
+        #expect(zip(stops, stops.dropFirst()).allSatisfy { $0.x <= $1.x })
+
+        // Sunrise ~6:05am and sunset ~8:20pm NZDT in early November (local hours from midnight).
+        let localHour = { (s: MeteogramModel.SkyStop) in (s.x - ChartPad.left) / m.pxPerHour }
+        let sunrise = localHour(stops[3]), sunset = localHour(stops[4])
+        #expect(sunrise > 5.8 && sunrise < 6.4)
+        #expect(sunset > 20.0 && sunset < 20.7)
+        // Civil twilight lasts roughly half an hour at this latitude.
+        let civil = sunrise - localHour(stops[2])
+        #expect(civil > 0.4 && civil < 0.75)
+    }
+
+    @Test func withoutCoordinatesThereAreNoSkyStops() {
+        #expect(model([hour(0)]).skyStops == nil)
+    }
+}
+
 @Suite @MainActor struct ChartLayerRenderTests {
     /// Smoke test: every layer, including the new ones, renders without trapping on
     /// sparse data (nil gusts, nil humidity, a single UV hour).

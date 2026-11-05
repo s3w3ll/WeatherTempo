@@ -83,9 +83,21 @@ public enum MeteogramRenderer {
 
         // Day/night bands, blended across each sunrise and sunset (stops at hour centres),
         // so dawn and dusk read as a short twilight rather than a hard edge.
+        // With coordinates, stops come from the sun's real position (sunrise/sunset, civil and
+        // nautical twilight); without, from each hour's day/night flag.
         let stops = m.hourStopLocations
-        ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)), with: horizontalGradient(
-            zip(stops, m.hours).map { ($0, $1.dayOrNight == "D" ? p.bgDay : p.bgNight) }, width: w))
+        let skyStops: [(Double, Color)] = m.skyStops.map { sky in
+            sky.map { s -> (Double, Color) in
+                let c: Color
+                switch s.phase {
+                case .day: c = p.bgDay
+                case .twilight: c = p.bgTwilight
+                case .night: c = p.bgNight
+                }
+                return (min(max(s.x / w, 0), 1), c)
+            }
+        } ?? zip(stops, m.hours).map { ($0, $1.dayOrNight == "D" ? p.bgDay : p.bgNight) }
+        ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)), with: horizontalGradient(skyStops, width: w))
 
         // Sunshine: a warm glow over the sky part of the main zone, as strong as the hour is
         // clear. Brightest at the top, fading towards the temperature floor.

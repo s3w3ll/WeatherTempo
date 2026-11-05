@@ -192,7 +192,7 @@ private struct LargeWidget: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(AccessibilityText.current(payload, insights)
                                 + (insights.nextHoursSummary.map { " Next 12 hours: " + $0 } ?? ""))
-            WidgetChart(insights: insights, now: snapshot.date, tz: tz)
+            WidgetChart(insights: insights, now: snapshot.date, location: snapshot.location)
                 .accessibilityHidden(true)
             DailyStrip(cells: insights.dailyStrip)
         }
@@ -249,14 +249,15 @@ private struct LargeWidget: View {
 private struct WidgetChart: View {
     let insights: WeatherInsights
     let now: Date
-    let tz: TimeZone
+    let location: Location
 
     var body: some View {
         GeometryReader { geo in
             let hours = insights.upcomingHours(limit: 30)
             let pph = max(4, (geo.size.width - ChartPad.left - ChartPad.right) / Double(max(hours.count, 1)))
             MeteogramCanvas(
-                model: MeteogramModel(hours: hours, pxPerHour: pph, now: now, timeZone: tz, layout: .compact),
+                model: MeteogramModel(hours: hours, pxPerHour: pph, now: now, timeZone: location.timeZone,
+                                      layout: .compact, latitude: location.lat, longitude: location.lon),
                 palette: .sky)
         }
         .frame(height: ChartLayout.compact.height)

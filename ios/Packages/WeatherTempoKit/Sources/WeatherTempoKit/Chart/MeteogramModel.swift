@@ -17,6 +17,10 @@ public struct MeteogramModel: Equatable {
     public let timeZone: TimeZone
     /// Vertical zone geometry: `.web` (364 px, the dashboard) or `.compact` (widgets).
     public let layout: ChartLayout
+    /// Where the forecast is for, to place sunrise, sunset and twilight by the sun's real
+    /// position. nil = shade the background from each hour's day/night flag instead.
+    public let latitude: Double?
+    public let longitude: Double?
 
     public let tMin: Double
     public let tMax: Double
@@ -39,12 +43,16 @@ public struct MeteogramModel: Equatable {
         pxPerHour: Double,
         now: Date = Date(),
         timeZone: TimeZone = MeteogramModel.nzTimeZone,
-        layout: ChartLayout = .web
+        layout: ChartLayout = .web,
+        latitude: Double? = nil,
+        longitude: Double? = nil
     ) {
         self.hours = hours
         self.pxPerHour = pxPerHour
         self.timeZone = timeZone
         self.layout = layout
+        self.latitude = latitude
+        self.longitude = longitude
 
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone

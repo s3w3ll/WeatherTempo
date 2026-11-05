@@ -51,6 +51,8 @@ public struct MeteogramView: View {
     private let days: Int
     private let timeZone: TimeZone
     private let now: Date
+    private let latitude: Double?
+    private let longitude: Double?
 
     @State private var selected: Int?
     /// Current horizontal scroll position of the chart (nil until first reported).
@@ -61,12 +63,16 @@ public struct MeteogramView: View {
         hours: [WeatherPayload.Hour],
         days: Int = 2,
         timeZone: TimeZone = MeteogramModel.nzTimeZone,
-        now: Date = Date()
+        now: Date = Date(),
+        latitude: Double? = nil,
+        longitude: Double? = nil
     ) {
         self.hours = hours
         self.days = days
         self.timeZone = timeZone
         self.now = now
+        self.latitude = latitude
+        self.longitude = longitude
     }
 
     /// Everything inside the GeometryReader: week strip, detail strip, chart, pressure strip.
@@ -80,7 +86,7 @@ public struct MeteogramView: View {
                 let model = MeteogramModel(
                     hours: hours,
                     pxPerHour: MeteogramModel.pxPerHour(viewportWidth: geo.size.width, days: days),
-                    now: now, timeZone: timeZone)
+                    now: now, timeZone: timeZone, latitude: latitude, longitude: longitude)
                 chart(model, viewport: geo.size.width)
             }
             .frame(height: Self.contentHeight)

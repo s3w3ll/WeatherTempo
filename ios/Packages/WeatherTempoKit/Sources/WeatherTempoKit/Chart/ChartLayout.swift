@@ -77,6 +77,9 @@ public struct ChartPalette: Sendable {
     public var bg: Color
     public var bgDay: Color
     public var bgNight: Color
+    /// Background at the end of civil twilight (sun 6° below the horizon): the dusky
+    /// midpoint the gradient passes through between day and night.
+    public var bgTwilight: Color
     public var tempFillTop: Color
     public var tempFillBottom: Color
     public var tempLine: Color
@@ -116,6 +119,7 @@ public struct ChartPalette: Sendable {
         // only where the sky is actually clear, so overcast days look grey, not sunny.
         bgDay:            Color(r: 255, g: 228, b: 190, a: 0.22),
         bgNight:          Color(r: 20,  g: 40,  b: 80,  a: 0.14),
+        bgTwilight:       Color(r: 190, g: 120, b: 160, a: 0.18),
         tempFillTop:      Color(r: 255, g: 140, b: 20,  a: 0.28),
         tempFillBottom:   Color(r: 255, g: 160, b: 30,  a: 0.04),
         tempLine:         Color(r: 234, g: 124, b: 28),
@@ -159,6 +163,7 @@ extension ChartPalette {
         bg:               .clear,
         bgDay:            Color(r: 255, g: 255, b: 255, a: 0.07),
         bgNight:          Color(r: 8,   g: 20,  b: 45,  a: 0.28),
+        bgTwilight:       Color(r: 110, g: 70,  b: 130, a: 0.22),
         tempFillTop:      Color(r: 242, g: 201, b: 76,  a: 0.30),
         tempFillBottom:   Color(r: 242, g: 201, b: 76,  a: 0.02),
         tempLine:         Color(r: 242, g: 201, b: 76),
