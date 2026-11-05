@@ -179,6 +179,25 @@ public struct MeteogramModel: Equatable {
         return runs
     }
 
+    // MARK: Sunshine
+
+    /// How sunny each hour is, 0...1: daylight with the cloud taken out. Night is 0, a
+    /// clear daytime hour 1, a half-cloudy one 0.5. Unknown cloud counts as no sun, so
+    /// missing data never paints a sunny glow.
+    public var sunshine: [Double] {
+        hours.map { h in
+            guard h.dayOrNight == "D", let c = h.cloudCover else { return 0 }
+            return 1 - min(max(c, 0), 100) / 100
+        }
+    }
+
+    /// Gradient stop positions (0...1 across the chart width) at each hour's centre, so a
+    /// horizontal gradient through per-hour colours blends smoothly from hour to hour.
+    public var hourStopLocations: [Double] {
+        let w = width
+        return hours.indices.map { hourX($0) / w }
+    }
+
     // MARK: Days and axis labels
 
     /// Indices (>= 1) where the local calendar day changes.

@@ -107,10 +107,14 @@ public struct ChartPalette: Sendable {
     public var dewLine: Color
     public var uvLine: Color
     public var uvFill: Color
+    /// Sunshine glow at full strength (a clear daytime hour); scaled down by cloud cover.
+    public var sunGlow: Color
 
     public static let light = ChartPalette(
         bg:               Color(r: 245, g: 248, b: 252),
-        bgDay:            Color(r: 255, g: 200, b: 120, a: 0.38),
+        // Daytime base is now a pale, neutral warm: the sunshine glow adds the gold on top
+        // only where the sky is actually clear, so overcast days look grey, not sunny.
+        bgDay:            Color(r: 255, g: 228, b: 190, a: 0.22),
         bgNight:          Color(r: 20,  g: 40,  b: 80,  a: 0.14),
         tempFillTop:      Color(r: 255, g: 140, b: 20,  a: 0.28),
         tempFillBottom:   Color(r: 255, g: 160, b: 30,  a: 0.04),
@@ -143,7 +147,8 @@ public struct ChartPalette: Sendable {
         freezingLine:     Color(r: 40,  g: 110, b: 220, a: 0.55),
         dewLine:          Color(r: 30,  g: 120, b: 200, a: 0.70),
         uvLine:           Color(r: 150, g: 70,  b: 200, a: 0.85),
-        uvFill:           Color(r: 150, g: 70,  b: 200, a: 0.10)
+        uvFill:           Color(r: 150, g: 70,  b: 200, a: 0.10),
+        sunGlow:          Color(r: 255, g: 190, b: 60,  a: 0.50)
     )
 }
 
@@ -183,6 +188,7 @@ extension ChartPalette {
         freezingLine:     Color(r: 160, g: 210, b: 255, a: 0.7),
         dewLine:          Color(r: 160, g: 210, b: 255, a: 0.7),
         uvLine:           Color(r: 215, g: 170, b: 255, a: 0.9),
-        uvFill:           Color(r: 215, g: 170, b: 255, a: 0.12)
+        uvFill:           Color(r: 215, g: 170, b: 255, a: 0.12),
+        sunGlow:          Color(r: 255, g: 214, b: 90,  a: 0.28)
     )
 }

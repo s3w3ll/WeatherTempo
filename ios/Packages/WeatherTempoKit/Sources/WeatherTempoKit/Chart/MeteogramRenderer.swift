@@ -42,6 +42,12 @@ public enum MeteogramRenderer {
             startPoint: CGPoint(x: 0, y: y0), endPoint: CGPoint(x: 0, y: y1))
     }
 
+    private static func horizontalGradient(_ stops: [(Double, Color)], width: Double) -> GraphicsContext.Shading {
+        .linearGradient(
+            Gradient(stops: stops.map { Gradient.Stop(color: $0.1, location: $0.0) }),
+            startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: width, y: 0))
+    }
+
     private static func label(_ s: String, at pt: CGPoint, size: Double, bold: Bool = false, color: Color, _ ctx: inout GraphicsContext) {
         // canvas fillText() puts the *baseline* at y; .bottom is the text box edge, which
         // is about 0.2 em below the baseline.
@@ -75,10 +81,25 @@ public enum MeteogramRenderer {
         let w = m.width, h = m.height
         ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)), with: .color(p.bg))
 
-        // Day/night bands
-        for (i, hour) in m.hours.enumerated() {
-            let rect = CGRect(x: ChartPad.left + Double(i) * m.pxPerHour, y: 0, width: m.pxPerHour, height: h)
-            ctx.fill(Path(rect), with: .color(hour.dayOrNight == "D" ? p.bgDay : p.bgNight))
+        // Day/night bands, blended across each sunrise and sunset (stops at hour centres),
+        // so dawn and dusk read as a short twilight rather than a hard edge.
+        let stops = m.hourStopLocations
+        ctx.fill(Path(CGRect(x: 0, y: 0, width: w, height: h)), with: horizontalGradient(
+            zip(stops, m.hours).map { ($0, $1.dayOrNight == "D" ? p.bgDay : p.bgNight) }, width: w))
+
+        // Sunshine: a warm glow over the sky part of the main zone, as strong as the hour is
+        // clear. Brightest at the top, fading towards the temperature floor.
+        let sun = m.sunshine
+        if sun.contains(where: { $0 > 0 }) {
+            let rect = Path(CGRect(x: 0, y: 0, width: w, height: m.layout.tempBot))
+            ctx.drawLayer { layer in
+                layer.fill(rect, with: horizontalGradient(
+                    zip(stops, sun).map { ($0, p.sunGlow.opacity($1)) }, width: w))
+                layer.blendMode = .destinationIn
+                layer.fill(rect, with: verticalGradient(
+                    [(0, .black), (0.55, .black.opacity(0.6)), (1, .black.opacity(0.15))],
+                    from: 0, to: m.layout.tempBot))
+            }
         }
 
         // Subtle horizontal grid lines in the temperature zone

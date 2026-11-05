@@ -93,6 +93,35 @@ private func model(_ hours: [Hour], layout: ChartLayout = .web) -> MeteogramMode
     }
 }
 
+@Suite struct SunshineTests {
+    private func sky(_ i: Int, _ dn: String?, cloud: Double?) -> Hour {
+        Hour(validTimeUtc: t0 + Double(i) * 3600, temperature: 10, cloudCover: cloud, dayOrNight: dn)
+    }
+
+    @Test func clearDaytimeIsFullSunAndCloudTakesItAway() {
+        let m = model([sky(0, "D", cloud: 0), sky(1, "D", cloud: 25), sky(2, "D", cloud: 100)])
+        #expect(m.sunshine == [1, 0.75, 0])
+    }
+
+    @Test func nightAndUnknownCloudGiveNoSun() {
+        let m = model([sky(0, "N", cloud: 0), sky(1, nil, cloud: 0), sky(2, "D", cloud: nil)])
+        #expect(m.sunshine == [0, 0, 0])
+    }
+
+    @Test func outOfRangeCloudIsClamped() {
+        #expect(model([sky(0, "D", cloud: -5), sky(1, "D", cloud: 140)]).sunshine == [1, 0])
+    }
+
+    @Test func gradientStopsSitAtHourCentresInOrder() {
+        let m = model((0..<24).map { sky($0, "D", cloud: 0) })
+        let s = m.hourStopLocations
+        #expect(s.count == 24)
+        #expect(zip(s, s.dropFirst()).allSatisfy { $0 < $1 })
+        #expect(s.first! > 0 && s.last! < 1)
+        #expect(abs(s[3] * m.width - m.hourX(3)) < 1e-9)
+    }
+}
+
 @Suite @MainActor struct ChartLayerRenderTests {
     /// Smoke test: every layer, including the new ones, renders without trapping on
     /// sparse data (nil gusts, nil humidity, a single UV hour).
