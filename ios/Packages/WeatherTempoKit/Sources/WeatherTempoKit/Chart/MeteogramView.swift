@@ -296,10 +296,12 @@ struct HourDetailStrip: View {
 
 /// The chart key in two rows (main zone, then wind/precip/pressure), colours from the palette.
 public struct MeteogramLegend: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     public init() {}
 
     public var body: some View {
-        let p = ChartPalette.light
+        let p = ChartPalette.dashboard(colorScheme)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 item("Temperature", p.tempLine, dashed: false)
