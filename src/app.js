@@ -19,7 +19,17 @@
   let TZ = "Pacific/Auckland";
 
   // ── Worker (full-payload, multi-location) ────────────────────────────────
-  const WORKER_URL = "https://weathertempo-pws-proxy.forgesync.workers.dev";
+  // On a local dev server, ?worker=http://localhost:8787 points the page at
+  // `wrangler dev` instead (only honoured for localhost on both ends).
+  const WORKER_URL = (function () {
+    const prod = "https://weathertempo-pws-proxy.forgesync.workers.dev";
+    try {
+      const local = /^(localhost|127\.0\.0\.1)$/;
+      const o = new URLSearchParams(location.search).get("worker");
+      if (o && local.test(location.hostname) && local.test(new URL(o).hostname)) return o.replace(/\/$/, "");
+    } catch (_) {}
+    return prod;
+  })();
   const REFRESH_INTERVAL_MS = 5 * 60 * 1000;   // 5 minutes
 
   // ── Location config (mirrors src/locations.js for use inside this IIFE) ─
@@ -56,6 +66,62 @@
 
   // Current active location (set on boot / location change)
   let currentLocation = getLocation("christchurch");
+
+  // MetService warnings covering the current location (most severe first)
+  let currentWarnings = [];
+
+  // ── Theme (Auto / Light / Dark) ───────────────────────────────────────────
+  // The CSS does the work for the page itself; this side only has to tell the
+  // canvases (chart, tides) which palette to draw with, and redraw them when
+  // the choice or the system setting changes.
+  const THEME_KEY = "weatherTempo.theme";
+  const darkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  const lightThemeColor = themeMeta ? themeMeta.content : null;
+
+  function themeChoice() {
+    const t = document.documentElement.dataset.theme;
+    return t === "light" || t === "dark" ? t : "auto";
+  }
+
+  function isDark() {
+    const c = themeChoice();
+    return c === "dark" || (c === "auto" && !!(darkQuery && darkQuery.matches));
+  }
+
+  function syncThemeColor() {
+    if (themeMeta && lightThemeColor) themeMeta.content = isDark() ? "#0d131e" : lightThemeColor;
+  }
+
+  /** Wire the settings panel's Auto/Light/Dark buttons; `onChange` redraws the canvases. */
+  function initThemeSwitch(onChange) {
+    const group = document.getElementById("theme-switch");
+    const sync = () => {
+      if (!group) return;
+      group.querySelectorAll("button").forEach(b =>
+        b.setAttribute("aria-pressed", String(b.dataset.themeChoice === themeChoice())));
+    };
+    sync();
+    syncThemeColor();
+
+    if (group) group.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-theme-choice]");
+      if (!btn) return;
+      const choice = btn.dataset.themeChoice;
+      if (choice === "auto") delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = choice;
+      try { localStorage.setItem(THEME_KEY, choice); } catch (_) {}
+      sync();
+      syncThemeColor();
+      onChange();
+    });
+
+    if (darkQuery) darkQuery.addEventListener("change", () => {
+      if (themeChoice() !== "auto") return;
+      syncThemeColor();
+      onChange();
+    });
+  }
 
   // ── Error Handling & Resilient Data Fetching ────────────────────────────────
   const DataFetcher = {
@@ -239,6 +305,100 @@
       };
     }
   };
+
+  // ── MetService warnings ──────────────────────────────────────────────────
+  /**
+   * Current warnings for a location from the Worker's /warnings route.
+   * Returns null when they couldn't be checked (the caller then keeps what it
+   * had), [] when there are none. A Worker deployed before this route existed
+   * answers with the weather payload instead, which has no `warnings` list.
+   */
+  async function fetchWarnings(locationId) {
+    try {
+      const resp = await DataFetcher.fetchWithTimeout(
+        `${WORKER_URL}/warnings?location=${encodeURIComponent(locationId)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!Array.isArray(data.warnings)) throw new Error("no warnings list in response");
+      const nowSec = Date.now() / 1000;
+      return data.warnings.filter(w => !w.expires || w.expires > nowSec);
+    } catch (err) {
+      console.warn("[WeatherTempo] Warnings unavailable:", err.message);
+      return null;
+    }
+  }
+
+  const WARNING_ICON =
+    '<svg class="warning-icon" aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">' +
+    '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>' +
+    '<path d="M12 9v4M12 17h.01" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>';
+  const CHEVRON =
+    '<svg class="warning-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  const LEVEL_SPOKEN = { yellow: "Yellow alert", orange: "Orange warning", red: "Red warning" };
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  /** One collapsible row: headline, when, where; details and advice when opened. */
+  function warningRow(w, open) {
+    const row = el("details", "warning-row");
+    row.dataset.id = w.id;
+    row.open = open;
+
+    const summary = el("summary");
+    summary.innerHTML = WARNING_ICON + CHEVRON;            // static markup only
+    summary.querySelector(".warning-icon").dataset.level = w.level;
+    const text = el("div");
+    text.append(
+      el("div", "warning-headline", w.headline),
+      el("div", "warning-timing", WeatherInsights.warningTiming(w, Date.now() / 1000, TZ)),
+    );
+    if (w.areaDescription) text.append(el("div", "warning-area", w.areaDescription));
+    summary.insertBefore(text, summary.lastChild);
+    summary.setAttribute("aria-label",
+      `${LEVEL_SPOKEN[w.level] || "Warning"}: ${w.headline}. ` +
+      `${WeatherInsights.warningTiming(w, Date.now() / 1000, TZ)}. ${w.areaDescription || ""}`);
+
+    const body = el("div", "warning-body");
+    if (w.details) body.append(el("p", null, w.details));
+    if (w.instruction) body.append(el("p", "warning-advice", w.instruction));
+    if (w.web) {
+      const a = el("a", null, "More on metservice.com");
+      a.href = w.web;
+      a.target = "_blank";
+      a.rel = "noopener";
+      const p = el("p");
+      p.append(a);
+      body.append(p);
+    }
+    row.append(summary, body);
+    return row;
+  }
+
+  /** The warnings card under the header; hidden when nothing is in force. */
+  function renderWarnings(warnings) {
+    const card = document.getElementById("warnings-card");
+    if (!card) return;
+    if (!warnings.length) {
+      card.hidden = true;
+      card.replaceChildren();
+      return;
+    }
+    // Keep rows the viewer opened open across the 5-minute refresh.
+    const open = new Set([...card.querySelectorAll("details[open]")].map(d => d.dataset.id));
+    const rank = WeatherInsights.LEVEL_RANK;
+    card.dataset.level = warnings.reduce((m, w) => rank[w.level] > rank[m] ? w.level : m, "yellow");
+    card.replaceChildren(
+      ...warnings.map(w => warningRow(w, open.has(w.id))),
+      el("div", "warnings-credit", "Source: MetService"),
+    );
+    card.hidden = false;
+  }
 
   // ── Formatters ───────────────────────────────────────────────────────────
   function fmtTime(utcSec, opts = {}) {
@@ -1159,8 +1319,103 @@
     }
   }
 
+  // ── Next 12 hours summary ─────────────────────────────────────────────────
+  function renderSummary(hourly) {
+    const p = document.getElementById("chart-summary");
+    if (p) p.textContent = WeatherInsights.nextHoursSummary(hourly, Date.now() / 1000, TZ, currentWarnings) || "";
+  }
+
+  // ── Week overview strip ───────────────────────────────────────────────────
+  /**
+   * One column per day, its width that day's share of the forecast hours, so
+   * the strip maps proportionally onto the whole chart. A frame tracks the
+   * part the chart is scrolled to; click a day to jump there, or drag along
+   * the strip to browse.
+   */
+  function renderWeekStrip(chart, hourly, scroll, signal) {
+    const strip = document.getElementById("week-strip");
+    if (!strip) return;
+    const days = WeatherInsights.weekDays(hourly, TZ, currentLocation.lat, currentLocation.lon, iconFor);
+    if (!days.length) { strip.replaceChildren(); return; }
+
+    // Shared scale for the temperature range bars
+    const temps = hourly.map(h => h.temperature).filter(v => v != null);
+    const lo = Math.min(...temps), hi = Math.max(Math.max(...temps), lo + 1);
+    const span = hi - lo;
+
+    strip.innerHTML = days.map(d => {
+      const sun   = WeatherInsights.sunHoursLabel(d.sunshineHours);
+      const sunN  = Math.round(d.sunshineHours);
+      const top   = d.high != null ? (hi - d.high) / span * 100 : 0;
+      const ht    = d.high != null ? Math.max(0, (d.high - d.low) / span * 100) : 0;
+      const label = [
+        d.label,
+        sunN === 0 ? (d.sunshineHours > 0 ? "little sunshine" : "no sunshine")
+                   : `about ${sunN} hour${sunN === 1 ? "" : "s"} of sunshine`,
+        d.high != null ? `high ${Math.round(d.high)} degrees` : null,
+        d.low  != null ? `low ${Math.round(d.low)} degrees` : null,
+        d.maxChance >= 20 ? `${Math.round(d.maxChance)} percent chance of rain` : null,
+      ].filter(Boolean).join(", ");
+      return `<button type="button" class="week-day" style="flex-grow:${d.end - d.start}"
+                data-start="${d.start}" data-label="${d.label}" aria-label="${label}">
+          <span class="wd-label">${d.label}</span>
+          <span class="wd-glyph" aria-hidden="true">${d.glyph}</span>
+          <span class="wd-hi">${d.high != null ? Math.round(d.high) + "°" : "—"}</span>
+          <span class="wd-bar" aria-hidden="true"><span style="top:${top}%;height:${ht}%"></span></span>
+          <span class="wd-lo">${d.low != null ? Math.round(d.low) + "°" : "—"}</span>
+          <span class="wd-sun">☀︎${sun}</span>
+        </button>`;
+    }).join("") + '<div class="week-frame" aria-hidden="true"></div>';
+
+    // A sliver of a day at either end keeps just its initial, glyph and bar.
+    strip.querySelectorAll(".week-day").forEach(b => {
+      const narrow = b.clientWidth < 40;
+      b.classList.toggle("narrow", narrow);
+      b.querySelector(".wd-label").textContent = narrow ? b.dataset.label.charAt(0) : b.dataset.label;
+    });
+
+    const frame = strip.querySelector(".week-frame");
+    const updateFrame = () => {
+      const [a, b] = chart.visibleFraction(scroll.scrollLeft, scroll.clientWidth);
+      const w  = strip.clientWidth;
+      const fw = Math.max(8, (b - a) * w);
+      frame.style.width = fw + "px";
+      frame.style.left  = Math.min(a * w, w - fw) + "px";
+    };
+    scroll.addEventListener("scroll", updateFrame, { signal, passive: true });
+    updateFrame();
+
+    // Horizontal drags browse; a press without a drag is a click on a day.
+    let downX = null, browsing = false;
+    const browseTo = clientX => {
+      const r = strip.getBoundingClientRect();
+      chart.scrollToHour(scroll, chart.browseStartHour((clientX - r.left) / r.width, scroll.clientWidth), false);
+    };
+    strip.addEventListener("pointerdown", e => { downX = e.clientX; browsing = false; }, { signal });
+    strip.addEventListener("pointermove", e => {
+      if (downX == null) return;
+      if (!browsing && Math.abs(e.clientX - downX) < 8) return;
+      if (!browsing) { browsing = true; strip.setPointerCapture(e.pointerId); }
+      browseTo(e.clientX);
+    }, { signal });
+    const end = () => { downX = null; };
+    strip.addEventListener("pointerup", end, { signal });
+    strip.addEventListener("pointercancel", end, { signal });
+    strip.addEventListener("click", e => {
+      if (browsing) { browsing = false; return; }
+      const day = e.target.closest(".week-day");
+      if (day) chart.scrollToHour(scroll, +day.dataset.start, true);
+    }, { signal });
+  }
+
   // ── Chart ─────────────────────────────────────────────────────────────────
-  function initChart(hourly, currentMeta, days = 2) {
+  /**
+   * Draw the forecast chart and everything tied to it (pressure strip, next
+   * 12 hours summary, week strip). The canvas holds the whole forecast; the
+   * zoom (`days`) sets how much of it fills the visible width.
+   */
+  function initChart(data, days = 2) {
+    const hourly = (data && data.hourly) || [];
     const canvas = document.getElementById("weather-chart");
     const scroll = document.getElementById("chart-scroll");
     if (!canvas || !hourly.length) return;
@@ -1169,7 +1424,7 @@
     // Aborting the shared controller removes ALL drag + hover listeners added
     // by the last call in a single shot — no listener accumulation on zoom change.
     if (initChart._abort) initChart._abort.abort();
-    scroll.querySelectorAll("canvas:not(#weather-chart)").forEach(c => c.remove());
+    scroll.querySelectorAll("canvas:not(#weather-chart):not(#pressure-strip)").forEach(c => c.remove());
     const oldTip = document.getElementById("chart-tooltip");
     if (oldTip) oldTip.remove();
 
@@ -1177,18 +1432,21 @@
     initChart._abort = ac;
     const sig = ac.signal;
 
-    // Slice to exactly days×24 hours so the canvas is exactly one viewport wide
-    // with no hidden data scrollable off to the right.
-    const sliced = hourly.slice(0, days * 24);
-
-    const chart = new WeatherChart(canvas, sliced, {
-      sunriseUtc: currentMeta?.sunriseUtc,
-      sunsetUtc:  currentMeta?.sunsetUtc,
+    const chart = new WeatherChart(canvas, hourly, {
       days,
+      lat:      currentLocation.lat,
+      lon:      currentLocation.lon,
+      warnings: currentWarnings,
+      dark:     isDark(),
+      tz:       TZ,
     });
     chart.render();
+    const pressureStrip = document.getElementById("pressure-strip");
+    if (pressureStrip) chart.renderPressureStrip(pressureStrip);
     chart.scrollToNow(scroll);
     chart.initHover(scroll, sig);
+    renderSummary(hourly);
+    renderWeekStrip(chart, hourly, scroll, sig);
 
     // Enable drag-to-scroll — AbortController ensures cleanup on re-init
     let isDown = false, startX = 0, startLeft = 0;
@@ -1376,9 +1634,29 @@
       } catch (_) {}
     }
 
+    const chartDays = () => zoomSel ? +zoomSel.value : 2;
+    let currentData = null;
+
+    /** Re-check warnings; redraw the card, and the chart if they changed. */
+    async function refreshWarnings(locationId) {
+      const warnings = await fetchWarnings(locationId);
+      if (warnings == null || locationId !== currentLocation.id) return;   // keep what we had
+      const changed = JSON.stringify(warnings) !== JSON.stringify(currentWarnings);
+      currentWarnings = warnings;
+      renderWarnings(warnings);
+      if (changed && currentData) initChart(currentData, chartDays());
+    }
+
     async function loadAndRender() {
       // Show loading state
       updateStatusBanner("loading", "Fetching weather data…");
+
+      // Warnings load alongside; the forecast doesn't wait for them (and they
+      // don't wait for it: refreshWarnings skips the chart until data exists).
+      currentData = null;
+      currentWarnings = [];
+      renderWarnings([]);
+      refreshWarnings(currentLocation.id);
 
       // Fetch data using resilient fetcher
       const result = await DataFetcher.fetch(currentLocation.id);
@@ -1402,18 +1680,26 @@
       const tbody = document.getElementById("hourly-table-body");
       if (tbody) tbody.innerHTML = "";
 
+      currentData = result.data;
       populateCard(result.data);
-      initChart(result.data.hourly, result.data.current, zoomSel ? +zoomSel.value : 2);
+      initChart(result.data, chartDays());
 
       return result.data;
     }
 
-    let currentData = await loadAndRender();
+    currentData = await loadAndRender();
+
+    // Appearance: redraw the canvases in the other palette
+    initThemeSwitch(() => {
+      if (!currentData) return;
+      initChart(currentData, chartDays());
+      populateTides(currentLocation.tidePort);
+    });
 
     // Zoom selector
     if (zoomSel) {
       zoomSel.addEventListener("change", () => {
-        initChart(currentData.hourly, currentData.current, +zoomSel.value);
+        initChart(currentData, chartDays());
         try { localStorage.setItem("weatherTempo.chartDays", zoomSel.value); } catch (_) {}
       });
     }
@@ -1427,7 +1713,7 @@
         if (roFirstRun) { roFirstRun = false; return; }
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-          initChart(currentData.hourly, currentData.current, zoomSel ? +zoomSel.value : 2);
+          initChart(currentData, chartDays());
         }, 150);
       }).observe(chartSection);
     }
@@ -1438,7 +1724,8 @@
       const tbody = document.getElementById("hourly-table-body");
       if (tbody) tbody.innerHTML = "";
       populateCard(data);
-      initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+      initChart(data, chartDays());
+      refreshWarnings(currentLocation.id);
 
       const footer = document.getElementById("site-footer");
       if (footer && (data.meta?.builtAt || data.meta?.updated)) {
@@ -1471,7 +1758,8 @@
         const tbody = document.getElementById("hourly-table-body");
         if (tbody) tbody.innerHTML = "";
         populateCard(data);
-        initChart(data.hourly, data.current, zoomSel ? +zoomSel.value : 2);
+        initChart(data, chartDays());
+        refreshWarnings(currentLocation.id);
       });
     });
   }

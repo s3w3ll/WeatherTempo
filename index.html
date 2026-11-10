@@ -1,8 +1,16 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>
+    // Apply a saved Light/Dark choice before the first paint (no flash).
+    // Auto leaves data-theme unset, so the CSS follows the system setting.
+    try {
+      var t = localStorage.getItem("weatherTempo.theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (_) {}
+  </script>
   <title>WeatherTempo — Christchurch</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
@@ -48,11 +56,21 @@
           </svg>
         </button>
       </div>
+      <div class="settings-section-label" id="theme-label">Appearance</div>
+      <div class="theme-switch" id="theme-switch" role="group" aria-labelledby="theme-label">
+        <button type="button" data-theme-choice="auto">Auto</button>
+        <button type="button" data-theme-choice="light">Light</button>
+        <button type="button" data-theme-choice="dark">Dark</button>
+      </div>
+      <div class="settings-section-label">Location</div>
       <div id="settings-location-list" class="settings-location-list"></div>
     </div>
   </div>
 
   <main class="app">
+
+    <!-- ── MetService warnings (filled by app.js; hidden when there are none) ── -->
+    <section class="card warnings-card" id="warnings-card" aria-label="MetService warnings" hidden></section>
 
     <!-- ── Hero grid (conditions + 4-day forecast) ───────────────────── -->
     <div class="hero-grid">
@@ -214,13 +232,20 @@
           </select>
         </label>
       </div>
+      <p class="chart-summary" id="chart-summary" aria-live="polite"></p>
+      <div class="week-strip" id="week-strip" aria-label="Forecast days: choose one to show it on the chart"></div>
       <div class="chart-scroll" id="chart-scroll">
         <canvas id="weather-chart"></canvas>
+        <canvas id="pressure-strip" aria-hidden="true"></canvas>
       </div>
       <div class="chart-legend">
         <span class="legend-item temp">Temperature</span>
         <span class="legend-item feels">Feels like</span>
+        <span class="legend-item dew">Dew point</span>
+        <span class="legend-item uv">UV</span>
+        <span class="legend-item freezing">0°</span>
         <span class="legend-item wind">Wind</span>
+        <span class="legend-item gust">Gusts</span>
         <span class="legend-item precip">Precipitation</span>
         <span class="legend-item pressure">Pressure</span>
       </div>
@@ -296,6 +321,7 @@
   <footer id="site-footer"></footer>
 
   <script src="src/tides.js"></script>
+  <script src="src/insights.js"></script>
   <script src="src/chart.js"></script>
   <script src="src/app.js"></script>
 </body>
