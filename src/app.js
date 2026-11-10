@@ -788,9 +788,10 @@
     const humLo   = n(fc.humidity.min.val, "%");
     const humLoT  = fmtH(fc.humidity.min.utcSec);
 
-    const windStr = fc.wind.speed != null
-      ? `${fc.wind.speed} km/h ${fc.wind.cardinal || ""} at ${fmtH(fc.wind.utcSec)}`
+    const windStr  = fc.wind.speed != null
+      ? `${fc.wind.speed} km/h ${fc.wind.cardinal || ""}`
       : "—";
+    const windTime = fc.wind.speed != null ? `at ${fmtH(fc.wind.utcSec)}` : "";
 
     const precipStr = (fc.precip.totalMm != null && fc.precip.maxChance != null)
       ? `${fc.precip.totalMm} mm · ${fc.precip.maxChance}%`
@@ -823,16 +824,15 @@
         </div>
       </div>
 
-      <div class="dc-row">
+      <div class="dc-row top">
         <span class="dc-row-icon">💧</span>
-        <span class="dc-row-content">
-          <span class="dc-val-muted">Hi</span>
-          <span class="dc-val-hum-hi">${humHi}</span>
-          <span class="dc-val-muted">${humHiT}</span>
-          &nbsp;·&nbsp;
-          <span class="dc-val-muted">Lo</span>
-          <span class="dc-val-hum-lo">${humLo}</span>
-          <span class="dc-val-muted">${humLoT}</span>
+        <span class="dc-row-content stack">
+          <span><span class="dc-val-muted">Hi</span>
+            <span class="dc-val-hum-hi">${humHi}</span>
+            <span class="dc-val-muted">${humHiT}</span></span>
+          <span><span class="dc-val-muted">Lo</span>
+            <span class="dc-val-hum-lo">${humLo}</span>
+            <span class="dc-val-muted">${humLoT}</span></span>
         </span>
       </div>
 
@@ -857,9 +857,12 @@
 
       <hr class="dc-sep">
 
-      <div class="dc-row">
+      <div class="dc-row top">
         <span class="dc-row-icon">💨</span>
-        <span class="dc-row-content dc-val-wind">${windStr}</span>
+        <span class="dc-row-content stack">
+          <span class="dc-val-wind">${windStr}</span>
+          <span class="dc-val-muted">${windTime}</span>
+        </span>
       </div>
 
       <div class="dc-row">
@@ -867,11 +870,11 @@
         <span class="dc-row-content dc-val-precip">${precipStr}</span>
       </div>
 
-      <div class="dc-row">
+      <div class="dc-row top">
         <span class="dc-row-icon">☀️</span>
-        <span class="dc-row-content">
+        <span class="dc-row-content stack">
           <span class="dc-val-uv">UV ${uvPeak}</span>
-          <span class="dc-val-muted"> · ${uvWin}</span>
+          <span class="dc-val-muted">${uvWin}</span>
         </span>
       </div>
 
