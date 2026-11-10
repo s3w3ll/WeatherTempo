@@ -37,7 +37,99 @@
   --select-bg:    #ffffff;
   --select-bg-hi: #eaf0fa;
 
+  --row-day:      rgba(255,210,140,0.18);
+  --row-night:    rgba(20,40,80,0.045);
+  --frame:        rgba(10,20,38,0.55);
+  --frame-fill:   rgba(10,20,38,0.05);
+
+  /* MetService warning colours. Their own yellow (#FFEB18) vanishes on a light
+     card, so a deeper amber stands in (same values as the iOS app). */
+  --warn-yellow:  #e2a800;
+  --warn-orange:  #f07814;
+  --warn-red:     #dc2832;
+
   --radius: 16px;
+  color-scheme: light;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────────────
+   Follows the system unless the viewer picked Light or Dark (data-theme on
+   <html>, set from the settings panel). The two blocks are the same tokens:
+   CSS can't share one block between a media query and an attribute selector.
+   Values are the iOS app's dark theme, where text keeps >= 4.5:1 on the card. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #0d131e;
+    --bg-glow-1:   rgba(40,80,150,0.30);
+    --bg-glow-2:   rgba(70,50,120,0.30);
+    --card-bg:     rgba(24,32,46,0.88);
+    --card-border: rgba(255,255,255,0.08);
+    --card-shadow: 0 1px 2px rgba(0,0,0,0.30), 0 8px 24px rgba(0,0,0,0.35);
+    --stat-bg:     rgba(255,255,255,0.03);
+    --text:        #e2e8f2;
+    --text-strong: #f5f8fc;
+    --text-muted:  #96aac4;
+    --text-fade:   #8c9eb4;
+    --accent-warm:  #f58c2d;
+    --accent-cyan:  #3cc8eb;
+    --accent-red:   #ff788c;
+    --accent-green: #3cc47a;
+    --accent-blue:  #6ea0ff;
+    --sunset:       #ff8c5a;
+    --chart-bg:    #101723;
+    --chart-grid:  rgba(255,255,255,0.06);
+    --chart-axis:  rgba(255,255,255,0.18);
+    --chart-now:   rgba(255,255,255,0.55);
+    --chart-press: rgba(255,255,255,0.35);
+    --tide-curve:   rgba(90,190,240,0.95);
+    --tide-fill-a:  rgba(60,140,210,0.55);
+    --tide-fill-b:  rgba(40,100,170,0.35);
+    --tide-fill-c:  rgba(20,40,70,0.15);
+    --tide-canvas:  rgba(16,23,35,0.90);
+    --select-bg:    #1c2638;
+    --select-bg-hi: #263247;
+    --row-day:      rgba(255,210,150,0.05);
+    --row-night:    rgba(0,0,0,0.18);
+    --frame:        rgba(245,248,252,0.55);
+    --frame-fill:   rgba(245,248,252,0.05);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:          #0d131e;
+  --bg-glow-1:   rgba(40,80,150,0.30);
+  --bg-glow-2:   rgba(70,50,120,0.30);
+  --card-bg:     rgba(24,32,46,0.88);
+  --card-border: rgba(255,255,255,0.08);
+  --card-shadow: 0 1px 2px rgba(0,0,0,0.30), 0 8px 24px rgba(0,0,0,0.35);
+  --stat-bg:     rgba(255,255,255,0.03);
+  --text:        #e2e8f2;
+  --text-strong: #f5f8fc;
+  --text-muted:  #96aac4;
+  --text-fade:   #8c9eb4;
+  --accent-warm:  #f58c2d;
+  --accent-cyan:  #3cc8eb;
+  --accent-red:   #ff788c;
+  --accent-green: #3cc47a;
+  --accent-blue:  #6ea0ff;
+  --sunset:       #ff8c5a;
+  --chart-bg:    #101723;
+  --chart-grid:  rgba(255,255,255,0.06);
+  --chart-axis:  rgba(255,255,255,0.18);
+  --chart-now:   rgba(255,255,255,0.55);
+  --chart-press: rgba(255,255,255,0.35);
+  --tide-curve:   rgba(90,190,240,0.95);
+  --tide-fill-a:  rgba(60,140,210,0.55);
+  --tide-fill-b:  rgba(40,100,170,0.35);
+  --tide-fill-c:  rgba(20,40,70,0.15);
+  --tide-canvas:  rgba(16,23,35,0.90);
+  --select-bg:    #1c2638;
+  --select-bg-hi: #263247;
+  --row-day:      rgba(255,210,150,0.05);
+  --row-night:    rgba(0,0,0,0.18);
+  --frame:        rgba(245,248,252,0.55);
+  --frame-fill:   rgba(245,248,252,0.05);
+  color-scheme: dark;
 }
 
 /* ── Reset & base ───────────────────────────────────────────────────────── */
@@ -614,8 +706,8 @@ body {
 }
 
 /* Day/night row tinting — mirrors chart C.bgDay / C.bgNight */
-.hourly-table tr.hr-day  { background: rgba(255,210,140,0.18); }
-.hourly-table tr.hr-night { background: rgba(20,40,80,0.045); }
+.hourly-table tr.hr-day  { background: var(--row-day); }
+.hourly-table tr.hr-night { background: var(--row-night); }
 
 /* Day divider row */
 .hourly-table tr.hr-day-label td {
@@ -904,6 +996,202 @@ body {
 .legend-item.wind::before    { background: var(--accent-red); }
 .legend-item.precip::before  { background: var(--accent-blue); }
 .legend-item.pressure::before { background: var(--chart-press); }
+/* Dashed / dotted series show as a border so the key matches the line style. */
+.legend-item.gust::before,
+.legend-item.dew::before,
+.legend-item.freezing::before {
+  height: 0;
+  background: none;
+  border-top: 2px dashed var(--accent-red);
+}
+.legend-item.gust::before     { border-top-color: rgba(200,50,40,0.7); }
+.legend-item.dew::before      { border-top: 2px dotted rgb(30,120,200); }
+.legend-item.freezing::before { border-top-color: rgb(40,110,220); }
+.legend-item.uv::before       { background: rgb(150,70,200); }
+
+/* ── Next 12 hours summary (above the chart) ────────────────────────────── */
+.chart-summary {
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--text);
+  margin: 0 0 10px;
+}
+.chart-summary:empty { display: none; }
+
+/* ── Week overview strip ─────────────────────────────────────────────────── */
+/* One column per day, as wide as that day's share of the forecast hours, so
+   it lines up proportionally with the whole chart. The frame shows which part
+   the chart is scrolled to; click a day to jump, drag to browse. */
+.week-strip {
+  position: relative;
+  display: flex;
+  margin-bottom: 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--stat-bg);
+  user-select: none;
+  touch-action: pan-y;
+}
+.week-strip:empty { display: none; }
+
+.week-day {
+  flex-basis: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 2px 5px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+}
+.week-day + .week-day { border-left: 1px solid var(--card-border); }
+.week-day:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: -2px; border-radius: 8px; }
+
+.wd-label { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+.wd-glyph { font-size: 0.95rem; line-height: 1.2; }
+.wd-hi    { font-size: 0.72rem; font-weight: 600; color: var(--accent-warm); font-variant-numeric: tabular-nums; }
+.wd-lo    { font-size: 0.72rem; color: var(--accent-cyan); font-variant-numeric: tabular-nums; }
+.wd-sun   { font-size: 0.66rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+
+.wd-bar {
+  position: relative;
+  width: 4px;
+  height: 22px;
+}
+.wd-bar span {
+  position: absolute;
+  left: 0;
+  width: 4px;
+  min-height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(var(--accent-warm), var(--accent-cyan));
+}
+
+/* Narrow days (a sliver at either end of the forecast) keep only the glyph and bar. */
+.week-day.narrow .wd-hi,
+.week-day.narrow .wd-lo,
+.week-day.narrow .wd-sun { display: none; }
+
+.week-frame {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  border: 1.5px solid var(--frame);
+  background: var(--frame-fill);
+  border-radius: 10px;
+  pointer-events: none;
+  transition: left 0.08s linear, width 0.08s linear;
+}
+
+/* ── Pressure trend strip (under the chart, scrolls with it) ────────────── */
+#pressure-strip { display: block; }
+
+/* ── MetService warnings card ────────────────────────────────────────────── */
+.warnings-card {
+  --warn: var(--warn-yellow);
+  margin-bottom: 16px;
+  padding: 12px 18px 10px;
+  border: 1.5px solid color-mix(in oklch, var(--warn) 55%, transparent);
+  background:
+    linear-gradient(color-mix(in oklch, var(--warn) 12%, transparent), color-mix(in oklch, var(--warn) 12%, transparent)),
+    var(--card-bg);
+}
+.warnings-card[data-level="orange"] { --warn: var(--warn-orange); }
+.warnings-card[data-level="red"]    { --warn: var(--warn-red); }
+
+.warning-row + .warning-row { border-top: 1px solid var(--card-border); }
+
+.warning-row > summary {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.warning-row > summary::-webkit-details-marker { display: none; }
+
+.warning-icon { width: 18px; height: 18px; margin-top: 1px; }
+.warning-icon[data-level="yellow"] { color: var(--warn-yellow); }
+.warning-icon[data-level="orange"] { color: var(--warn-orange); }
+.warning-icon[data-level="red"]    { color: var(--warn-red); }
+
+.warning-headline { font-size: 0.9rem; font-weight: 700; color: var(--text-strong); }
+.warning-timing   { font-size: 0.78rem; font-weight: 500; color: var(--text); margin-top: 1px; }
+.warning-area {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.warning-row[open] .warning-area { white-space: normal; }
+
+.warning-chevron {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+.warning-row[open] .warning-chevron { transform: rotate(180deg); }
+
+.warning-body {
+  padding: 0 0 10px 28px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.warning-body p + p { margin-top: 6px; }
+.warning-advice { color: var(--text-muted); }
+.warning-body a { color: var(--accent-blue); font-weight: 600; }
+
+.warnings-credit {
+  font-size: 0.68rem;
+  color: var(--text-fade);
+  padding-top: 4px;
+}
+
+/* ── Appearance control (settings panel) ────────────────────────────────── */
+.settings-section-label {
+  padding: 12px 16px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.theme-switch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  margin: 0 16px 4px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--select-bg-hi);
+}
+.theme-switch button {
+  padding: 6px 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.theme-switch button[aria-pressed="true"] {
+  background: var(--select-bg);
+  color: var(--text-strong);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
 
 /* ── Tooltip shared ──────────────────────────────────────────────────────── */
 .tt-time {

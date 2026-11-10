@@ -150,6 +150,147 @@ function isPwsObservationFresh(obs, now) {
   return true;
 }
 
+// ── MetService warnings (CAP feed) ────────────────────────────────────────────
+// MetService publishes current watches and warnings as CAP 1.2 alerts, listed
+// in an RSS index (CC BY 4.0, so the page credits MetService). Browsers can't
+// read it directly (no CORS headers), hence this route. Same rules as the iOS
+// app's WarningClient / CAPParser: keep live public alerts whose polygon
+// contains the place, most severe first.
+const CAP_RSS = "https://alerts.metservice.com/cap/rss";
+
+// How long Cloudflare's edge may reuse the RSS index. A published CAP alert
+// never changes (an update gets a new identifier), so those cache for a day.
+const CAP_RSS_TTL   = 120;
+const CAP_ALERT_TTL = 86400;
+
+function xmlText(s) {
+  return s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+/** Text of the first <tag> (first <info> block when an alert has several languages). */
+function capField(xml, tag) {
+  const m = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`));
+  return m ? xmlText(m[1]) : null;
+}
+
+function capAll(xml, tag) {
+  return [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "g"))].map(m => xmlText(m[1]));
+}
+
+/** Alert document URLs from the RSS index, in feed order. */
+function capLinks(rss) {
+  return (rss.match(/<item\b[\s\S]*?<\/item>/g) || [])
+    .map(item => capField(item, "link"))
+    .filter(Boolean);
+}
+
+/** "lat,lon lat,lon …" → [[lat, lon], …] */
+function capPolygon(text) {
+  return text.split(/\s+/).map(pair => pair.split(",").map(Number))
+    .filter(p => p.length === 2 && p.every(Number.isFinite));
+}
+
+/** Ray casting. NZ is clear of the antimeridian except the Chathams, which have their own areas. */
+function polygonContains(poly, lat, lon) {
+  if (poly.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [aLat, aLon] = poly[i], [bLat, bLon] = poly[j];
+    if ((aLat > lat) !== (bLat > lat) &&
+        lon < (bLon - aLon) * (lat - aLat) / (bLat - aLat) + aLon) inside = !inside;
+  }
+  return inside;
+}
+
+const toUnix = iso => { const t = Date.parse(iso || ""); return Number.isFinite(t) ? Math.round(t / 1000) : null; };
+
+/**
+ * One CAP alert, or null for anything that isn't a live public alert (tests,
+ * exercises, cancellations) or is missing what the page needs.
+ */
+function parseCap(xml) {
+  xml = xml.replace(/<(\w+:)?Signature\b[\s\S]*?<\/(\w+:)?Signature>/g, "");
+  const id = capField(xml, "identifier");
+  const status = capField(xml, "status");
+  if (!id || (status && status !== "Actual") || capField(xml, "msgType") === "Cancel") return null;
+
+  const params = {};
+  for (const p of xml.match(/<parameter\b[\s\S]*?<\/parameter>/g) || []) {
+    const name = capField(p, "valueName");
+    if (name && !(name in params)) params[name] = capField(p, "value");
+  }
+  const colour   = (params.ColourCode || "").toLowerCase();
+  const severity = (capField(xml, "severity") || "").toLowerCase();
+  const level = ["red", "orange", "yellow"].includes(colour) ? colour
+    : severity === "extreme" ? "red" : severity === "severe" ? "orange" : "yellow";
+
+  const web = capField(xml, "web");
+  return {
+    id,
+    headline: capField(xml, "headline") || capField(xml, "event") || "Weather warning",
+    event:    capField(xml, "event") || "",
+    level,
+    onset:    toUnix(capField(xml, "onset") || capField(xml, "effective")),
+    expires:  toUnix(capField(xml, "expires")),
+    areaDescription: capAll(xml, "areaDesc").join(", ").replace(/,(?=\S)/g, ", "),
+    details:     capField(xml, "description") || "",
+    instruction: capField(xml, "instruction"),
+    web: web && /^https:\/\//.test(web) ? web : null,
+    polygons: capAll(xml, "polygon").map(capPolygon).filter(p => p.length >= 3),
+  };
+}
+
+const LEVEL_RANK = { yellow: 0, orange: 1, red: 2 };
+
+/**
+ * GET /warnings?location=<id> → { warnings, complete, source, updated }.
+ * `complete` is false when some alert in the feed couldn't be read, so a
+ * warning missing from the list may only have failed to download.
+ */
+async function handleWarnings(loc, cors) {
+  const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), {
+    status, headers: { "Content-Type": "application/json", ...cors, ...extra },
+  });
+
+  let links;
+  try {
+    const res = await fetch(CAP_RSS, { cf: { cacheTtl: CAP_RSS_TTL, cacheEverything: true } });
+    if (!res.ok) return json({ error: `MetService feed HTTP ${res.status}` }, 502);
+    links = capLinks(await res.text());
+  } catch (err) {
+    return json({ error: `MetService feed unreachable: ${err.message}` }, 502);
+  }
+
+  const docs = await Promise.allSettled(links.map(url =>
+    fetch(url, { cf: { cacheTtl: CAP_ALERT_TTL, cacheEverything: true } })
+      .then(r => r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`)))));
+
+  const nowSec = Date.now() / 1000;
+  let complete = true;
+  const warnings = [];
+  for (const d of docs) {
+    if (d.status !== "fulfilled") { complete = false; continue; }
+    const w = parseCap(d.value);
+    if (!w) continue;
+    if (w.expires && w.expires <= nowSec) continue;
+    if (!w.polygons.some(p => polygonContains(p, loc.lat, loc.lon))) continue;
+    const { polygons, ...rest } = w;   // the page only needs the text and times
+    warnings.push(rest);
+  }
+  warnings.sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level] || (a.onset || 0) - (b.onset || 0));
+
+  return json(
+    { warnings, complete, source: "MetService", updated: new Date().toISOString() },
+    200, { "Cache-Control": "public, max-age=60" });
+}
+
 // ── Worker entry ──────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -174,6 +315,8 @@ export default {
         { status: 404, headers: { "Content-Type": "application/json", ...cors } }
       );
     }
+
+    if (reqUrl.pathname === "/warnings") return handleWarnings(loc, cors);
 
     // ── Fetch Open-Meteo (always) + PWS (CHC only) ────────────────────────
     const fetchPromises = [fetch(buildOMUrl(loc.lat, loc.lon))];

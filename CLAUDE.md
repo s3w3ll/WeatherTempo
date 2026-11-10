@@ -36,8 +36,9 @@ index.html → src/app.js loads data → populates chart + cards
 ```
 
 **Frontend Structure:**
-- `src/app.js` (1248 LOC) — data loading, card population, sample data fallback
-- `src/chart.js` (835 LOC) — WeatherChart class, canvas layers, Catmull-Rom bezier curves
+- `src/app.js` — data loading, card population, warnings card, week strip, theme switch, sample data fallback
+- `src/insights.js` — pure calculations (sun position, dew point, pressure tendency, week columns, next-12h summary); mirrors the iOS app's WeatherTempoKit, testable in Node
+- `src/chart.js` — WeatherChart class, canvas layers (light + dark palettes), pressure strip, Catmull-Rom bezier curves
 - `src/tides.js` (328 LOC) — harmonic tide predictor using Lyttelton LINZ constants, J2000 epoch
 - `src/locations.js` (250 LOC) — location management
 
@@ -83,6 +84,10 @@ Time axis (332-348px): hour labels, day separators
 - WMO weather codes mapped to TWC-style phrases/icons in fetch_weather.py
 
 **Why hybrid?** PWS API tier doesn't include hourly/daily forecasts. Open-Meteo provides ECMWF model data for free.
+
+**MetService warnings:** Worker route `GET /warnings?location=<id>` reads MetService's CAP feed (`alerts.metservice.com/cap/rss`, CC BY 4.0 — credit "Source: MetService"), keeps alerts whose polygon contains the location. Browsers can't read the feed directly (no CORS). Test locally with `cd workers && npx wrangler dev`, then open `http://localhost:8080/?worker=http://localhost:8787` (the override only works on localhost).
+
+**Dark mode:** CSS tokens in `style.css` follow `prefers-color-scheme` unless `<html data-theme="light|dark">` is set (Appearance in the settings panel, saved as `weatherTempo.theme`). Canvases pick `LIGHT`/`DARK` palettes in chart.js and redraw on change.
 
 ## Testing Approaches
 
