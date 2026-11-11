@@ -444,10 +444,11 @@
     if (code === 30 || code === 34) return day ? "⛅" : "☁️";
     if (code === 29 || code === 33 || code === 27 || code === 28) return day ? "🌥️" : "☁️";
     if (code === 26) return "☁️";
-    if (code === 9  || code === 11) return "🌦️";
+    // 45 (showers) and 4 (thunderstorm) are what the Worker's wmoToIcon() sends.
+    if (code === 9  || code === 11 || code === 45) return "🌦️";
     if (code === 12 || code === 39 || code === 40) return "🌧️";
     if ([13,14,15,16,41,42,43,46].includes(code)) return "❄️";
-    if ([17,18,35,37,38,47].includes(code)) return "⛈️";
+    if ([4,17,18,35,37,38,47].includes(code)) return "⛈️";
     if ([19,20,21,22].includes(code)) return "🌫️";
     if (code === 23 || code === 24) return "💨";
     return day ? "⛅" : "☁️";
@@ -982,16 +983,21 @@
     renderHourlyTable(data.hourly || []);
   }
 
-  function renderHourlyTable(hourly) {
-    const tbody  = document.getElementById("hourly-table-body");
+  /** Wire the "Hourly Forecast" open/close button. Call once: the table is re-rendered on every refresh. */
+  function initHourlyTableToggle() {
     const toggle = document.getElementById("hourly-table-toggle");
     const wrap   = document.getElementById("hourly-table-wrap");
-    if (!tbody) return;
-
+    if (!toggle || !wrap) return;
     toggle.addEventListener("click", () => {
       const open = wrap.classList.toggle("open");
       toggle.setAttribute("aria-expanded", open);
     });
+  }
+
+  /** Fill the hourly table, replacing whatever rows were there. */
+  function renderHourlyTable(hourly) {
+    const tbody  = document.getElementById("hourly-table-body");
+    if (!tbody) return;
 
     const nowSec  = Date.now() / 1000;
     const maxHrs  = 5 * 24;
@@ -1049,7 +1055,7 @@
       rows.push(tr);
     });
 
-    tbody.append(...rows);
+    tbody.replaceChildren(...rows);
   }
 
   function degToCard(deg) {
@@ -1060,37 +1066,37 @@
   // ── Live refresh helpers ──────────────────────────────────────────────────
 
   /**
-   * Start the 5-minute live refresh loop.
-   * Fires one tick immediately on page load (no cold-start delay).
-   * On each tick: re-fetch full payload from Worker and re-render the card.
-   * Errors are swallowed — existing card values remain visible.
+   * The 5-minute live refresh loop. The first tick comes one interval after
+   * start(): the page has just loaded the same payload itself.
+   * On each tick: re-fetch the full payload from the Worker and hand it to
+   * `onData`. Errors are swallowed — what's on screen stays.
    */
   function startLiveRefresh(onData) {
-    if (!WORKER_URL) return;
-
     let intervalId = null;
 
     async function tick() {
+      const locationId = currentLocation.id;
       try {
-        const url  = `${WORKER_URL}?location=${encodeURIComponent(currentLocation.id)}`;
+        const url  = `${WORKER_URL}?location=${encodeURIComponent(locationId)}`;
         const resp = await fetch(url, { cache: "no-store" });
         if (!resp.ok) throw new Error(`Worker HTTP ${resp.status}`);
         const data = await resp.json();
         if (data.error) throw new Error(data.error);
         if (!data.hourly || data.hourly.length < 10) throw new Error("empty payload");
+        if (locationId !== currentLocation.id) return;   // the location changed while this was in flight
         onData(data);
       } catch (err) {
         console.warn("[WeatherTempo] Live refresh failed:", err.message);
       }
     }
 
-    function start() {
-      tick();
-      intervalId = setInterval(tick, REFRESH_INTERVAL_MS);
-    }
-
     function stop() {
       clearInterval(intervalId);
+    }
+
+    function start() {
+      stop();   // never two loops at once
+      intervalId = setInterval(tick, REFRESH_INTERVAL_MS);
     }
 
     start();
@@ -1416,12 +1422,23 @@
    * Draw the forecast chart and everything tied to it (pressure strip, next
    * 12 hours summary, week strip). The canvas holds the whole forecast; the
    * zoom (`days`) sets how much of it fills the visible width.
+   *
+   * Redraws (refresh, zoom, resize, theme) keep the viewer's place: if they
+   * have scrolled away from where "now" was put, the same time stays at the
+   * left edge; if they haven't, the view keeps following "now".
+   * `resetScroll` forces the view back to "now" (new location).
    */
-  function initChart(data, days = 2) {
+  function initChart(data, days = 2, { resetScroll = false } = {}) {
     const hourly = (data && data.hourly) || [];
     const canvas = document.getElementById("weather-chart");
     const scroll = document.getElementById("chart-scroll");
     if (!canvas || !hourly.length) return;
+
+    // Read the viewer's place before the canvas is resized under it.
+    const prev = initChart._view;
+    const followNow = resetScroll || !prev ||
+      (prev.autoLeft != null && Math.abs(scroll.scrollLeft - prev.autoLeft) <= 2);
+    const keepTime = followNow ? null : prev.chart.timeAtScroll(scroll.scrollLeft);
 
     // ── Cleanup previous render ─────────────────────────────────────────────
     // Aborting the shared controller removes ALL drag + hover listeners added
@@ -1446,7 +1463,10 @@
     chart.render();
     const pressureStrip = document.getElementById("pressure-strip");
     if (pressureStrip) chart.renderPressureStrip(pressureStrip);
-    chart.scrollToNow(scroll);
+    if (followNow) chart.scrollToNow(scroll);
+    else chart.scrollToTime(scroll, keepTime);
+    // scrollLeft is read back because the browser clamps it to the scrollable range.
+    initChart._view = { chart, autoLeft: followNow ? scroll.scrollLeft : null };
     chart.initHover(scroll, sig);
     renderSummary(hourly);
     renderWeekStrip(chart, hourly, scroll, sig);
@@ -1625,8 +1645,6 @@
 
     applyLocationMeta();
 
-    let liveRefresh = null;
-
     const zoomSel = document.getElementById("chart-zoom");
     // Restore persisted zoom
     if (zoomSel) {
@@ -1650,7 +1668,36 @@
       if (changed && currentData) initChart(currentData, chartDays());
     }
 
+    /**
+     * Draw everything that comes from a weather payload. The one path for the
+     * first load, a location change and every live refresh.
+     *   resetScroll — put the chart back at "now" (new location)
+     *   live        — the payload came from the Worker just now
+     */
+    function render(data, { resetScroll = false, live = false } = {}) {
+      currentData = data;
+      populateCard(data);
+      initChart(data, chartDays(), { resetScroll });
+      if (!live) return;
+
+      const stamp = data.meta?.builtAt || data.meta?.updated;
+      const footer = document.getElementById("site-footer");
+      if (footer && stamp) {
+        const parts = new Intl.DateTimeFormat("en-NZ", {
+          timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", hour12: false,
+        }).formatToParts(new Date(stamp));
+        const get = t => parts.find(p => p.type === t)?.value ?? "00";
+        footer.textContent = `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}`;
+      }
+
+      const updated = document.getElementById("last-updated");
+      if (updated && data.meta?.updated) updated.textContent = `Live · ${fmtShortTime(Date.parse(data.meta.updated) / 1000)}`;
+    }
+
     async function loadAndRender() {
+      const locationId = currentLocation.id;
+
       // Show loading state
       updateStatusBanner("loading", "Fetching weather data…");
 
@@ -1659,10 +1706,11 @@
       currentData = null;
       currentWarnings = [];
       renderWarnings([]);
-      refreshWarnings(currentLocation.id);
+      refreshWarnings(locationId);
 
       // Fetch data using resilient fetcher
-      const result = await DataFetcher.fetch(currentLocation.id);
+      const result = await DataFetcher.fetch(locationId);
+      if (locationId !== currentLocation.id) return;   // a newer location change owns the page now
 
       // Update UI based on result
       if (result.source === 'worker') {
@@ -1679,18 +1727,11 @@
         updateStatusBanner("error", `⚠️ All data sources failed — showing synthetic sample data`);
       }
 
-      // Clear hourly table body on re-render (location switch)
-      const tbody = document.getElementById("hourly-table-body");
-      if (tbody) tbody.innerHTML = "";
-
-      currentData = result.data;
-      populateCard(result.data);
-      initChart(result.data, chartDays());
-
-      return result.data;
+      render(result.data, { resetScroll: true, live: result.source === 'worker' });
     }
 
-    currentData = await loadAndRender();
+    initHourlyTableToggle();
+    await loadAndRender();
 
     // Appearance: redraw the canvases in the other palette
     initThemeSwitch(() => {
@@ -1721,49 +1762,18 @@
       }).observe(chartSection);
     }
 
-    // Live refresh loop — re-renders card on each tick with fresh Worker data
-    liveRefresh = startLiveRefresh(data => {
-      currentData = data;
-      const tbody = document.getElementById("hourly-table-body");
-      if (tbody) tbody.innerHTML = "";
-      populateCard(data);
-      initChart(data, chartDays());
+    // Live refresh loop — redraws with fresh Worker data every 5 minutes
+    const liveRefresh = startLiveRefresh(data => {
+      render(data, { live: true });
       refreshWarnings(currentLocation.id);
-
-      const footer = document.getElementById("site-footer");
-      if (footer && (data.meta?.builtAt || data.meta?.updated)) {
-        const d = new Date(data.meta.builtAt || data.meta.updated);
-        const pad = n => String(n).padStart(2, "0");
-        const parts = new Intl.DateTimeFormat("en-NZ", {
-          timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
-          hour: "2-digit", minute: "2-digit", hour12: false,
-        }).formatToParts(d);
-        const get = t => parts.find(p => p.type === t)?.value ?? "00";
-        footer.textContent = `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}`;
-      }
-
-      const t = data.meta?.updated
-        ? new Date(data.meta.updated).toLocaleTimeString("en-NZ", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true })
-        : null;
-      if (t) {
-        const el = document.getElementById("last-updated");
-        if (el) el.textContent = `Live · ${t}`;
-      }
     });
 
-    // Settings panel — on location change, stop old refresh, reload, restart
+    // Settings panel — on location change, pause the loop, reload, restart it
     initSettingsPanel(async () => {
-      if (liveRefresh) liveRefresh.stop();
+      liveRefresh.stop();
       applyLocationMeta();
-      currentData = await loadAndRender();
-      liveRefresh = startLiveRefresh(data => {
-        currentData = data;
-        const tbody = document.getElementById("hourly-table-body");
-        if (tbody) tbody.innerHTML = "";
-        populateCard(data);
-        initChart(data, chartDays());
-        refreshWarnings(currentLocation.id);
-      });
+      await loadAndRender();
+      liveRefresh.start();
     });
   }
 

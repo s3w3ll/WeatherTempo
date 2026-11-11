@@ -118,10 +118,10 @@ function buildOMUrl(lat, lon) {
     `?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,apparent_temperature,relative_humidity_2m,` +
       `wind_speed_10m,wind_direction_10m,wind_gusts_10m,` +
-      `surface_pressure,uv_index,weather_code,cloud_cover,dew_point_2m` +
+      `pressure_msl,uv_index,weather_code,cloud_cover,dew_point_2m` +
     `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,` +
       `wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,` +
-      `precipitation_probability,precipitation,surface_pressure,` +
+      `precipitation_probability,precipitation,pressure_msl,` +
       `uv_index,weather_code,is_day` +
     `&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset` +
     `&wind_speed_unit=kmh&timeformat=unixtime` +
@@ -402,7 +402,9 @@ export default {
       ? ((wc !== null && temp !== null && wc < temp) ? wc : (hi ?? omCur.apparent_temperature))
       : omCur.apparent_temperature;
     const humidity    = pws ? (obs.humidity    ?? omCur.relative_humidity_2m) : omCur.relative_humidity_2m;
-    const pressure    = pws ? (m.pressure      ?? omCur.surface_pressure)     : omCur.surface_pressure;
+    // Sea-level pressure (pressure_msl), not surface_pressure: surface pressure
+    // drops ~12 hPa per 100 m of altitude, so Tekapo would read ~920 hPa.
+    const pressure    = pws ? (m.pressure      ?? omCur.pressure_msl)         : omCur.pressure_msl;
     const windSpeed   = pws ? (m.windSpeed     ?? omCur.wind_speed_10m)       : omCur.wind_speed_10m;
     const windGust    = pws ? (m.windGust      ?? omCur.wind_gusts_10m)       : omCur.wind_gusts_10m;
     const windDir     = pws ? (obs.winddir     ?? omCur.wind_direction_10m)   : omCur.wind_direction_10m;
@@ -457,7 +459,7 @@ export default {
     const hrCloud  = omHrly.cloud_cover               || [];
     const hrPrecP  = omHrly.precipitation_probability || [];
     const hrQpf    = omHrly.precipitation             || [];
-    const hrPres   = omHrly.surface_pressure          || [];
+    const hrPres   = omHrly.pressure_msl              || [];
     const hrUv     = omHrly.uv_index                  || [];
     const hrWmo    = omHrly.weather_code              || [];
     const hrIsDay  = omHrly.is_day                    || [];

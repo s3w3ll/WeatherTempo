@@ -1184,6 +1184,16 @@
       scrollContainer.scrollTo({ left: PAD.left + i * this._pph, behavior: smooth ? "smooth" : "auto" });
     }
 
+    /** The UTC time at the left edge of the view (hour i's left edge is hours[i].validTimeUtc). */
+    timeAtScroll(scrollLeft) {
+      return this.hours[0].validTimeUtc + (scrollLeft - PAD.left) / this._pph * 3600;
+    }
+
+    /** Scroll so UTC time `t` sits at the left edge: restores a place saved with timeAtScroll(). */
+    scrollToTime(scrollContainer, t) {
+      scrollContainer.scrollLeft = PAD.left + (t - this.hours[0].validTimeUtc) / 3600 * this._pph;
+    }
+
     /** The part of the series in view, as fractions 0–1 of all hours. */
     visibleFraction(scrollLeft, viewport) {
       const total = this.hours.length * this._pph;
