@@ -85,6 +85,8 @@ Time axis (332-348px): hour labels, day separators
 
 **Why hybrid?** PWS API tier doesn't include hourly/daily forecasts. Open-Meteo provides ECMWF model data for free.
 
+**Worker caching:** `[cache] enabled = true` in `workers/wrangler.toml` turns on Workers Caching: Cloudflare answers repeat requests from its own copy without running the Worker. The forecast response is kept for 6 minutes (`WEATHER_TTL` in `workers/pws-proxy.js`), warnings for 1 minute. Every response must set `Cache-Control` itself (errors use `no-store`), because one without it is cached on a default lifetime. Check with `curl -I` and the `Cf-Cache-Status` header. `current.observedUtc` is when the values were measured (the station's report time, or the model's time step); `meta.updated` is when the Worker built the payload.
+
 **MetService warnings:** Worker route `GET /warnings?location=<id>` reads MetService's CAP feed (`alerts.metservice.com/cap/rss`, CC BY 4.0 — credit "Source: MetService"), keeps alerts whose polygon contains the location. Browsers can't read the feed directly (no CORS). Test locally with `cd workers && npx wrangler dev`, then open `http://localhost:8080/?worker=http://localhost:8787` (the override only works on localhost).
 
 **Dark mode:** CSS tokens in `style.css` follow `prefers-color-scheme` unless `<html data-theme="light|dark">` is set (Appearance in the settings panel, saved as `weatherTempo.theme`). Canvases pick `LIGHT`/`DARK` palettes in chart.js and redraw on change.

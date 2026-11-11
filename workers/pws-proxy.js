@@ -129,6 +129,26 @@ function buildOMUrl(lat, lon) {
   );
 }
 
+// ── Caching ───────────────────────────────────────────────────────────────────
+// Workers Caching ([cache] in wrangler.toml) stores each response for as long as
+// its Cache-Control allows, keyed by path + query string, so everyone looking at
+// the same location within that time shares one upstream fetch.
+//
+// s-maxage is the shared (Cloudflare) lifetime; max-age=0 stops browsers and the
+// iOS app adding their own copy on top, which would double the possible age.
+// Every response must say what it wants: one with no Cache-Control at all is
+// cached on a default lifetime (a 404 for 3 minutes, a 200 for 2 hours).
+const WEATHER_TTL   = 360;   // seconds: 6 minutes
+const CACHE_WEATHER = `public, max-age=0, s-maxage=${WEATHER_TTL}`;
+const NO_STORE      = "no-store";   // errors: never keep these
+
+// ── PWS observation time ──────────────────────────────────────────────────────
+/** When the station took this reading, in epoch seconds; null if it doesn't say. */
+function pwsObservedSec(obs) {
+  if (Number.isFinite(obs?.epoch)) return obs.epoch;
+  return toUnix(obs?.obsTimeUtc);
+}
+
 // ── PWS observation freshness ─────────────────────────────────────────────────
 /**
  * Decide whether a PWS observation is recent enough to prefer over the
@@ -139,8 +159,8 @@ function buildOMUrl(lat, lon) {
  * worse than the forecast model. Returning false here routes current conditions
  * to Open-Meteo and surfaces pws:"stale" in meta.sourceStatus.
  *
- * @param {object} obs  observations[0] — has obs.obsTimeUtc (epoch SECONDS)
- *                      and obs.obsTimeLocal (ISO-ish local string)
+ * @param {object} obs  observations[0]; pwsObservedSec(obs) gives the time the
+ *                      station took the reading, in epoch SECONDS (or null)
  * @param {number} now  Date.now() in milliseconds
  * @returns {boolean}   true → trust the PWS reading, false → fall back
  */
@@ -256,7 +276,7 @@ const LEVEL_RANK = { yellow: 0, orange: 1, red: 2 };
  */
 async function handleWarnings(loc, cors) {
   const json = (body, status = 200, extra = {}) => new Response(JSON.stringify(body), {
-    status, headers: { "Content-Type": "application/json", ...cors, ...extra },
+    status, headers: { "Content-Type": "application/json", "Cache-Control": NO_STORE, ...cors, ...extra },
   });
 
   let links;
@@ -312,7 +332,7 @@ export default {
     if (!loc) {
       return new Response(
         JSON.stringify({ error: `Unknown location: ${locationId}` }),
-        { status: 404, headers: { "Content-Type": "application/json", ...cors } }
+        { status: 404, headers: { "Content-Type": "application/json", "Cache-Control": NO_STORE, ...cors } }
       );
     }
 
@@ -341,7 +361,7 @@ export default {
       const msg = omResult.reason?.message ?? `Open-Meteo upstream ${omResult.value?.status}`;
       return new Response(
         JSON.stringify({ error: msg }),
-        { status: 502, headers: { "Content-Type": "application/json", ...cors } }
+        { status: 502, headers: { "Content-Type": "application/json", "Cache-Control": NO_STORE, ...cors } }
       );
     }
     const om = await omResult.value.json();
@@ -411,6 +431,9 @@ export default {
     const uvIndex     = pws ? (obs.uv          ?? omCur.uv_index)             : omCur.uv_index;
     const dewPoint    = pws ? (m.dewpt         ?? omCur.dew_point_2m)         : omCur.dew_point_2m;
     const solarRad    = pws ? (obs.solarRadiation ?? null)                    : null;
+    // When these values were measured: the station's own report time, or the
+    // time step of the forecast model when the station isn't the source.
+    const observedUtc = pws ? pwsObservedSec(obs) : (omCur.time ?? null);
     const wmoCode     = omCur.weather_code ?? 0;
     const condition   = WMO_PHRASE[wmoCode] ?? "Unknown";
 
@@ -439,6 +462,7 @@ export default {
       uvIndex:       uvIndex   !== undefined ? +uvIndex.toFixed(1)   : null,
       dewPoint:      dewPoint  !== undefined ? +dewPoint.toFixed(1)  : null,
       solarRad:      solarRad,
+      observedUtc,
       condition,
       cloudPhrase:   condition,
       iconCode:      wmoToIcon(wmoCode, isDay),
@@ -530,7 +554,7 @@ export default {
       status: 200,
       headers: {
         "Content-Type":  "application/json",
-        "Cache-Control": "no-store",
+        "Cache-Control": CACHE_WEATHER,
         ...cors,
       },
     });

@@ -423,6 +423,20 @@
     return `${h}h ago`;
   }
 
+  /**
+   * "Station reported 1:02 pm" (or "Forecast model, 1:00 pm" where no station
+   * supplied the reading), with the age added once it is an hour or more old.
+   * Null when the payload doesn't say when the values were measured.
+   */
+  function observedLabel(observedUtc, source) {
+    if (!observedUtc) return null;
+    const lead = source === "pws" ? "Station reported " : source === "open-meteo" ? "Forecast model, " : null;
+    if (!lead) return null;
+    const ageMin = (Date.now() / 1000 - observedUtc) / 60;
+    const age = ageMin >= 60 ? ` · ${fmtRelative(new Date(observedUtc * 1000).toISOString())}` : "";
+    return lead + fmtShortTime(observedUtc) + age;
+  }
+
   // ── Moon phase ──────────────────────────────────────────────────────────
   const MOON_EMOJI = {
     NM: "🌑", WNM: "🌑",
@@ -908,6 +922,15 @@
     el("current-temp").textContent      = c.temp  != null ? `${Math.round(c.temp)}°` : "—°";
     el("current-condition").textContent = c.condition || c.cloudPhrase || "—";
     el("current-feels").textContent     = c.feelsLike != null ? `Feels like ${Math.round(c.feelsLike)}°` : "";
+
+    // When these values were measured, which is not when the page fetched them:
+    // the Worker's answer is shared for 6 minutes, and a station can lag further.
+    const observed = el("current-observed");
+    if (observed) {
+      const text = observedLabel(c.observedUtc, data.meta?.sourceStatus?.currentSource);
+      observed.textContent = text || "";
+      observed.hidden = !text;
+    }
 
     // Hourly strip
     renderHourlyStrip(data.hourly || [], 10);
@@ -1692,7 +1715,7 @@
       }
 
       const updated = document.getElementById("last-updated");
-      if (updated && data.meta?.updated) updated.textContent = `Live · ${fmtShortTime(Date.parse(data.meta.updated) / 1000)}`;
+      if (updated && data.meta?.updated) updated.textContent = `Updated ${fmtShortTime(Date.parse(data.meta.updated) / 1000)}`;
     }
 
     async function loadAndRender() {

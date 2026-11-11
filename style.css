@@ -471,6 +471,13 @@ body {
   margin-top: 2px;
 }
 
+/* When the current values were measured ("Station reported 1:02 pm") */
+.current-observed {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 /* ── High/Low ────────────────────────────────────────────────────────────── */
 .high-low {
   display: flex;
