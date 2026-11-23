@@ -12,7 +12,8 @@ replaces it.
 | 2a | Data layer, theme, shell, conditions/warnings/tides cards | **done** |
 | 2b | Skia meteogram + pressure strip + tide curve (hover/tap, zoom, scroll) | **done** |
 | 2c | 4-day cards, week strip + summary, hourly table, Pages deploy workflow | **done** (workflow is inert until Pages source is switched; see `.github/workflows/pages.yml`) |
-| 3 | iOS unsigned-ipa job, notifications/alerts, warnings, diagnostics | |
+| 3a | CI builds an unsigned iOS ipa (macOS runner, ~8 min) | **done**; not yet run on a device |
+| 3b | Notifications/alerts, background refresh, diagnostics screen | next |
 | 4 | Native widget (expo-apple-targets, reusing the SwiftUI widget views) | |
 | 5 | Retire the `ios` branch and the root vanilla-JS site | |
 
@@ -42,3 +43,30 @@ The predictor has no nodal corrections, so New Brighton is fitted to one year.
 See the docstring in `tools/fit_linz_tides.py`: download LINZ's table for the
 new year, `pdftotext -layout` it (not `-raw`), run the script, paste the
 constants into `tidePorts.ts`, update the fixture, and run `npm test`.
+
+## iOS build (no Mac, no paid Apple account)
+
+`.github/workflows/ios-ipa.yml` runs on every push to `EXPO` that touches `app/`
+(or by hand under Actions → "iOS ipa (Expo)" → Run workflow):
+
+1. typecheck + tests, then `expo prebuild --platform ios` (the native project is
+   generated from `app.json`, never committed), then `xcodebuild` for a device
+   with signing off, then zip `Payload/` into an `.ipa`.
+2. Download the `WeatherTempo-Expo-unsigned-ipa` artifact from the run.
+3. On Windows, open Sideloadly (or AltServer / SideStore), plug in the phone,
+   sign in with your free Apple ID and drag the `.ipa` in. Valid 7 days with a
+   free ID (SideStore refreshes it automatically). Developer Mode must be on.
+
+Runner: Expo SDK 58 targets the iOS 27 SDK; `macos-15` (Xcode up to 26.3) fails
+to compile ExpoModulesJSI, `macos-26` (Xcode 26.6) works. Both runner and Xcode
+are inputs on a manual run if that changes.
+
+### Temporary: installs next to the Swift app
+`app.json` uses bundle id `nz.sewell.weathertempo.expo` and name "WT Expo" so
+this build does not replace the Swift app while we migrate.
+
+## Cutover checklist (when the Expo app replaces everything)
+- [ ] `app.json`: `ios.bundleIdentifier` → `nz.sewell.weathertempo`, `ios.infoPlist.CFBundleDisplayName` → `WeatherTempo`
+- [ ] `.github/workflows/pages.yml`: trigger branch `EXPO` → `main`; Pages source → "GitHub Actions"; allow `main` on the `github-pages` environment
+- [ ] `ios-ipa.yml` / `expo-ci.yml`: trigger branch `EXPO` → `main`
+- [ ] Merge `EXPO` into `main`; retire the `ios` branch, `ios/`, `src/*.js`, `index.html`, `style.css` at the repo root
