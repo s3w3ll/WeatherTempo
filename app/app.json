@@ -1,25 +1,28 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "WeatherTempo",
+    "slug": "weathertempo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false
+      "supportsTablet": false,
+      "bundleIdentifier": "nz.sewell.weathertempo",
+      "buildNumber": "1"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./public/favicon-32x32.png",
+      "name": "WeatherTempo",
+      "shortName": "WeatherTempo",
+      "backgroundColor": "#eef2f8",
+      "themeColor": "#ffd0c2"
+    },
+    "plugins": [
+      "expo-font"
+    ],
+    "scheme": "weathertempo"
   }
 }
