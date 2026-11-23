@@ -1,0 +1,103 @@
+name: iOS ipa (Expo)
+
+# Builds the Expo app as an UNSIGNED .ipa on a GitHub macOS runner (free: the
+# repo is public), so no Mac, Xcode or paid Apple account is needed. Download
+# the artifact from the run, then sign + install it from Windows with
+# Sideloadly (or AltServer / SideStore) using a free Apple ID. See app/README.md.
+#
+# The native project is never committed: `expo prebuild` generates it from
+# app.json each time (continuous native generation), so there is nothing to
+# keep in step with the web build.
+
+on:
+  push:
+    branches: [EXPO]
+    paths: ["app/**", ".github/workflows/ios-ipa.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck and test (a broken build is never packaged)
+        run: npm run typecheck && npm test -- --ci
+
+      - name: Select newest stable Xcode
+        working-directory: .
+        run: |
+          ls -d /Applications/Xcode_*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Generate the native iOS project (expo prebuild, runs pod install)
+        run: CI=1 npx expo prebuild --platform ios --clean
+
+      - name: Find the workspace and scheme
+        run: |
+          WS=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WS" .xcworkspace)
+          echo "Workspace: $WS  Scheme: $SCHEME"
+          echo "WS=$WS" >> "$GITHUB_ENV"
+          echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
+
+      - name: Build unsigned for device
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace "$WS" -scheme "$SCHEME" \
+            -configuration Release -sdk iphoneos -derivedDataPath build \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            2>&1 | tee xcodebuild.log | tail -n 40
+
+      - name: Package .ipa
+        run: |
+          APP=$(ls -d build/Build/Products/Release-iphoneos/*.app | head -1)
+          echo "App bundle: $APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry WeatherTempo-Expo-unsigned.ipa Payload
+          ls -lh WeatherTempo-Expo-unsigned.ipa
+
+      - name: Sanity-check the bundle
+        run: |
+          PLIST=$(ls Payload/*.app/Info.plist)
+          plutil -p "$PLIST" | grep -E "CFBundleIdentifier|CFBundleDisplayName|CFBundleVersion|CFBundleShortVersionString|MinimumOSVersion"
+          # The Release build must embed the JS bundle, or the app opens to a red screen.
+          test -f Payload/*.app/main.jsbundle && echo "main.jsbundle present"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WeatherTempo-Expo-unsigned-ipa
+          path: app/WeatherTempo-Expo-unsigned.ipa
+          retention-days: 14
+
+      - name: Upload the build log if anything failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: app/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -8,8 +8,16 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "nz.sewell.weathertempo",
-      "buildNumber": "1"
+      "bundleIdentifier": "nz.sewell.weathertempo.expo",
+      "buildNumber": "1",
+      "infoPlist": {
+        "CFBundleDisplayName": "WT Expo",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "web": {
       "bundler": "metro",
