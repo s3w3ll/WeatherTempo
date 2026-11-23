@@ -1,0 +1,15 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "types": [
+      "jest"
+    ],
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*",
+    "*.ts",
+    "*.tsx"
+  ]
+}
