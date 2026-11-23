@@ -14,6 +14,13 @@ on:
     branches: [EXPO]
     paths: ["app/**", ".github/workflows/ios-ipa.yml"]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: "macOS runner image (Expo SDK 58 needs a recent Xcode)"
+        default: "macos-26"
+      xcode:
+        description: "Xcode to use, e.g. 26.3 (blank = newest non-beta)"
+        default: ""
 
 concurrency:
   group: ios-ipa-${{ github.ref }}
@@ -21,7 +28,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 60
     defaults:
       run:
@@ -40,11 +47,17 @@ jobs:
       - name: Typecheck and test (a broken build is never packaged)
         run: npm run typecheck && npm test -- --ci
 
-      - name: Select newest stable Xcode
+      - name: Select Xcode
         working-directory: .
+        env:
+          WANT: ${{ inputs.xcode }}
         run: |
-          ls -d /Applications/Xcode_*.app
-          XCODE=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "Installed:"; ls -d /Applications/Xcode*.app
+          if [ -n "$WANT" ]; then
+            XCODE=$(ls -d /Applications/Xcode_${WANT}*.app | sort -V | tail -1)
+          else
+            XCODE=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          fi
           echo "Using $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
           xcodebuild -version
