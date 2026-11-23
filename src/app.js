@@ -52,7 +52,7 @@
     { id: "westport",         name: "Westport",         region: "New Zealand", lat: -41.7500, lon: 171.5997, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "westport",     tideLabel: "Westport — Tides" },
     { id: "tekapo",           name: "Tekapo",           region: "New Zealand", lat: -44.0053, lon: 170.4775, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
     { id: "franz-josef",      name: "Franz Josef",      region: "New Zealand", lat: -43.3884, lon: 170.1815, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
-    { id: "christchurch",     name: "Christchurch",     region: "New Zealand", lat: -43.5321, lon: 172.6362, timezone: "Pacific/Auckland", pwsStation: "ICHRIS810", tidePort: "lyttelton",  tideLabel: "New Brighton Beach — Tides" },
+    { id: "christchurch",     name: "Christchurch",     region: "New Zealand", lat: -43.5321, lon: 172.6362, timezone: "Pacific/Auckland", pwsStation: "ICHRIS810", tidePort: "new-brighton",  tideLabel: "New Brighton Beach — Tides" },
     { id: "geraldine",        name: "Geraldine",        region: "New Zealand", lat: -44.0900, lon: 171.2356, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },
     { id: "timaru",           name: "Timaru",           region: "New Zealand", lat: -44.3960, lon: 171.2553, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: "timaru",       tideLabel: "Timaru — Tides" },
     { id: "queenstown",       name: "Queenstown",       region: "New Zealand", lat: -45.0312, lon: 168.6626, timezone: "Pacific/Auckland", pwsStation: null,       tidePort: null,            tideLabel: null },

@@ -164,6 +164,39 @@
       ],
     },
 
+    // New Brighton Pier (Christchurch open coast).
+    // Fitted by least squares to the official LINZ 2026 high/low table for New
+    // Brighton Pier (every high and low, times and heights; 1410 events). Phases
+    // are relative to the V0 column, so the extra shallow-water/minor terms use
+    // V0 = 0. Reproduces the LINZ times within ~8 min through 2026. Nodal
+    // corrections are not applied, so accuracy drifts slowly in other years —
+    // refit against the LINZ table for the year if precision matters.
+    "new-brighton": {
+      Z0: 1.369,
+      constituents: [
+        ["M2",  28.9841042, 0.761, 137.8, 124.30],
+        ["S2",  30.0000000, 0.051, 163.1,   0.00],
+        ["N2",  28.4397295, 0.172, 106.4, 349.34],
+        ["K2",  30.0821373, 0.022, 127.1, 200.93],
+        ["K1",  15.0410686, 0.053,   3.7, 280.47],
+        ["O1",  13.9430356, 0.033, 150.8, 203.83],
+        ["P1",  14.9589314, 0.014, 169.3,  79.53],
+        ["Q1",  13.3986609, 0.010, 156.3,  68.87],
+        ["M4",  57.9682084, 0.007, 270.8, 248.60],
+        ["MS4", 58.9841042, 0.004, 151.4, 124.30],
+        ["MN4", 57.4238337, 0.004, 231.2, 113.64],
+        ["2N2", 27.8953548, 0.031,  70.8, 214.38],
+        ["MU2", 27.9682084, 0.029, 194.1,   0.00],
+        ["NU2", 28.5125831, 0.041,  81.2,   0.00],
+        ["L2",  29.5284789, 0.025, 103.6,   0.00],
+        ["T2",  29.9589333, 0.002, 201.5,   0.00],
+        ["J1",  15.5854433, 0.001, 171.2,   0.00],
+        ["OO1", 16.1391017, 0.002, 176.8,   0.00],
+        ["MSF",  1.0158958, 0.026, 289.1,   0.00],
+        ["M3",  43.4761563, 0.003, 156.7,   0.00],
+      ],
+    },
+
     // Lyttelton (Christchurch)
     lyttelton: {
       Z0: 0.868,

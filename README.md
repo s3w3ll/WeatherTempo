@@ -6,7 +6,7 @@ Personal weather dashboard for Christchurch, New Zealand — styled after [Weath
 
 - **Conditions card** — current temperature, today's high/low with the hour they occur, humidity, wind, pressure, UV index, sunrise/sunset, moon phase, and next tide times for New Brighton Beach
 - **WeatherGraph-style chart** — smooth temperature area, feels-like curve, precipitation bars, wind arrows, pressure line, and cloud overlays across a 5-day hourly forecast
-- **Harmonic tide prediction** — computed locally from LINZ Lyttelton constituent data; no extra API key required
+- **Harmonic tide prediction** — computed locally from harmonic constants fitted to LINZ's official New Brighton Pier table (other NZ ports use LINZ constituent data); no extra API key required
 - **Auto-refresh** — GitHub Actions fetches fresh data from Weather Underground every 30 minutes
 
 ## Setup
@@ -50,7 +50,7 @@ GitHub Actions (every 30 min)
 
 GitHub Pages
   └── index.html
-        ├── src/tides.js   — harmonic tide predictor (Lyttelton)
+        ├── src/tides.js   — harmonic tide predictor (New Brighton fitted to LINZ 2026 table)
         ├── src/chart.js   — canvas WeatherGraph-style chart
         └── src/app.js     — data loading + UI population
 ```

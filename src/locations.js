@@ -190,7 +190,7 @@ export const LOCATIONS = [
     lat: -43.5321, lon: 172.6362,
     timezone: "Pacific/Auckland",
     pwsStation: "ICHRIS810",
-    tidePort: "lyttelton",
+    tidePort: "new-brighton",
     tideLabel: "New Brighton Beach — Tides",
   },
   {

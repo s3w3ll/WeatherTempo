@@ -39,7 +39,7 @@ index.html → src/app.js loads data → populates chart + cards
 - `src/app.js` — data loading, card population, warnings card, week strip, theme switch, sample data fallback
 - `src/insights.js` — pure calculations (sun position, dew point, pressure tendency, week columns, next-12h summary); mirrors the iOS app's WeatherTempoKit, testable in Node
 - `src/chart.js` — WeatherChart class, canvas layers (light + dark palettes), pressure strip, Catmull-Rom bezier curves
-- `src/tides.js` (328 LOC) — harmonic tide predictor using Lyttelton LINZ constants, J2000 epoch
+- `src/tides.js` — harmonic tide predictor, J2000 epoch. Christchurch uses the `new-brighton` port, fitted by least squares to the official LINZ New Brighton Pier 2026 high/low table (the old Lyttelton constants were ~90 min late at New Brighton). No nodal corrections, so accuracy drifts in other years — refit each year from `https://static.charts.linz.govt.nz/tide-tables/maj-ports/pdf/New%20Brighton%20Pier%20<year>.pdf` (use `pdftotext -layout`; `-raw` gave mismatched data). Verify against the LINZ table before changing constants.
 - `src/locations.js` (250 LOC) — location management
 
 ## Critical Files (DO NOT EDIT MANUALLY)
