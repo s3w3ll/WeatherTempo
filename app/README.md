@@ -9,7 +9,9 @@ replaces it.
 | Phase | What | State |
 |---|---|---|
 | 1 | Expo scaffold + shared core (`src/core`): tides, insights, locations, with tests | **done** |
-| 2 | Dashboard UI, Skia chart, web export + Pages workflow | next |
+| 2a | Data layer, theme, shell, conditions/warnings/tides cards | **done** |
+| 2b | Skia meteogram + pressure strip + tide curve (hover/tap, zoom, scroll) | **done** |
+| 2c | 4-day cards, week strip + summary, hourly table, Pages deploy workflow | next |
 | 3 | iOS unsigned-ipa job, notifications/alerts, warnings, diagnostics | |
 | 4 | Native widget (expo-apple-targets, reusing the SwiftUI widget views) | |
 | 5 | Retire the `ios` branch and the root vanilla-JS site | |
@@ -31,6 +33,7 @@ npm install
 npm test            # jest
 npm run typecheck
 npm run web         # expo start --web
+npm run export:web  # static web build into dist/ (also fetches CanvasKit; not committed)
 ```
 
 ## Refitting tides each year
