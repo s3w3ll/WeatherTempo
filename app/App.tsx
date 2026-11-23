@@ -4,6 +4,7 @@ import { ActivityIndicator, Platform, RefreshControl, ScrollView, StyleSheet, Vi
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { useWeather } from "./src/data/useWeather";
 import { SettingsProvider, useSettings } from "./src/settings";
+import { ChartSection } from "./src/ui/ChartSection";
 import { ConditionsCard } from "./src/ui/ConditionsCard";
 import { Header } from "./src/ui/Header";
 import { SettingsPanel } from "./src/ui/SettingsPanel";
@@ -51,6 +52,7 @@ function Dashboard() {
           {data ? (
             <>
               <ConditionsCard data={data} tz={location.timezone} nowMs={nowMs} />
+              <ChartSection data={data} location={location} warnings={weather.warnings} nowMs={nowMs} />
               <TidesCard location={location} nowMs={nowMs} />
             </>
           ) : (

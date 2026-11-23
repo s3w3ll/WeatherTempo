@@ -31,4 +31,4 @@ jobs:
       - name: Test (tides vs LINZ table, insights, locations)
         run: npm test -- --ci
       - name: Web export builds
-        run: CI=1 npx expo export -p web
+        run: npm run setup:web && CI=1 npx expo export -p web
