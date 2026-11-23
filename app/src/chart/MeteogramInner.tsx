@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Txt } from "../ui/kit";
 import { MeteogramCanvas } from "./MeteogramCanvas";
-import { type ChartModel, scrollForNow, scrollForTime, timeAtScroll, tooltip } from "./model";
+import { type ChartModel, scrollForHour, scrollForNow, scrollForTime, timeAtScroll, tooltip } from "./model";
 import { PressureStrip } from "./PressureStrip";
 import { rgba, WARN_RGB, type Palette } from "./palette";
 
@@ -21,12 +21,20 @@ export interface MeteogramProps {
   /** Bump to scroll back to "now" (new location). */
   resetKey: string;
   onScrollTime?: (utcSec: number) => void;
+  /** Scroll offset and viewport width, for the week strip's frame. */
+  onScrollMetrics?: (scrollLeft: number, viewport: number) => void;
+  /** Filled with imperative scrolling for the week strip. */
+  controlRef?: React.MutableRefObject<MeteogramControl | null>;
   /** UTC time to keep at the left edge when the model changes (zoom). */
   keepTime: number | null;
   textColor: string;
   mutedColor: string;
   cardColor: string;
   borderColor: string;
+}
+
+export interface MeteogramControl {
+  scrollToHour(i: number, animated: boolean): void;
 }
 
 const TIP_W = 220;
@@ -49,7 +57,7 @@ function Cursor({ model, P, i }: { model: ChartModel; P: Palette; i: number }) {
 }
 
 export default function MeteogramInner(props: MeteogramProps) {
-  const { model, P, resetKey, keepTime, onScrollTime } = props;
+  const { model, P, resetKey, keepTime, onScrollTime, onScrollMetrics, controlRef } = props;
   const scroller = useRef<any>(null);   // RN 0.88's ScrollViewInstance type is awkward; we only call scrollTo
   const scrollX = useRef(0);
   const [viewport, setViewport] = useState(0);
@@ -77,7 +85,23 @@ export default function MeteogramInner(props: MeteogramProps) {
   const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollX.current = e.nativeEvent.contentOffset.x;
     onScrollTime?.(timeAtScroll(model, scrollX.current));
-  }, [model, onScrollTime]);
+    onScrollMetrics?.(scrollX.current, e.nativeEvent.layoutMeasurement.width);
+  }, [model, onScrollTime, onScrollMetrics]);
+
+  // Let the week strip drive the scroll, and tell it where we are (also after zoom/resize).
+  useEffect(() => {
+    if (controlRef) {
+      controlRef.current = {
+        scrollToHour: (i, animated) => {
+          const x = scrollForHour(model, i);
+          scroller.current?.scrollTo({ x, animated });
+          scrollX.current = x;
+          onScrollMetrics?.(x, viewport);
+        },
+      };
+    }
+    if (viewport) onScrollMetrics?.(scrollX.current, viewport);
+  }, [model, viewport, controlRef, onScrollMetrics]);
 
   const pick = useCallback((x: number) => model.hourAt(x), [model]);
   const webHover = Platform.OS === "web"

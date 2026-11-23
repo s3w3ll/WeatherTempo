@@ -6,6 +6,8 @@ import { useWeather } from "./src/data/useWeather";
 import { SettingsProvider, useSettings } from "./src/settings";
 import { ChartSection } from "./src/ui/ChartSection";
 import { ConditionsCard } from "./src/ui/ConditionsCard";
+import { DayCards } from "./src/ui/DayCards";
+import { HourlyTable } from "./src/ui/HourlyTable";
 import { Header } from "./src/ui/Header";
 import { SettingsPanel } from "./src/ui/SettingsPanel";
 import { bannerFor, StatusBanner } from "./src/ui/StatusBanner";
@@ -52,7 +54,9 @@ function Dashboard() {
           {data ? (
             <>
               <ConditionsCard data={data} tz={location.timezone} nowMs={nowMs} />
+              <DayCards data={data} tz={location.timezone} nowSec={nowMs / 1000} />
               <ChartSection data={data} location={location} warnings={weather.warnings} nowMs={nowMs} />
+              <HourlyTable hourly={data.hourly} tz={location.timezone} nowSec={nowMs / 1000} />
               <TidesCard location={location} nowMs={nowMs} />
             </>
           ) : (

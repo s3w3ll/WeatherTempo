@@ -11,7 +11,7 @@ replaces it.
 | 1 | Expo scaffold + shared core (`src/core`): tides, insights, locations, with tests | **done** |
 | 2a | Data layer, theme, shell, conditions/warnings/tides cards | **done** |
 | 2b | Skia meteogram + pressure strip + tide curve (hover/tap, zoom, scroll) | **done** |
-| 2c | 4-day cards, week strip + summary, hourly table, Pages deploy workflow | next |
+| 2c | 4-day cards, week strip + summary, hourly table, Pages deploy workflow | **done** (workflow is inert until Pages source is switched; see `.github/workflows/pages.yml`) |
 | 3 | iOS unsigned-ipa job, notifications/alerts, warnings, diagnostics | |
 | 4 | Native widget (expo-apple-targets, reusing the SwiftUI widget views) | |
 | 5 | Retire the `ios` branch and the root vanilla-JS site | |

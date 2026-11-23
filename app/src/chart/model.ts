@@ -433,3 +433,20 @@ export const scrollForHour = (m: ChartModel, i: number) => PAD.left + i * m.pph;
 /** UTC time at the left edge of the view, and its inverse (keeps position across zoom changes). */
 export const timeAtScroll = (m: ChartModel, x: number) => m.hours[0].validTimeUtc + ((x - PAD.left) / m.pph) * 3600;
 export const scrollForTime = (m: ChartModel, t: number) => PAD.left + ((t - m.hours[0].validTimeUtc) / 3600) * m.pph;
+
+// ── Week strip ↔ chart ──────────────────────────────────────────────────────
+/** The part of the series in view, as fractions 0–1 of all hours (drives the strip's frame). */
+export function visibleFraction(m: ChartModel, scrollLeft: number, viewport: number): [number, number] {
+  const total = m.hours.length * m.pph;
+  if (total <= 0) return [0, 1];
+  const a = clamp((scrollLeft - PAD.left) / total, 0, 1);
+  const b = clamp((scrollLeft + viewport - PAD.left) / total, a, 1);
+  return [a, b];
+}
+
+/** First hour to scroll to so the window is centred on `fraction` of the series (browsing by dragging the strip). */
+export function browseStartHour(m: ChartModel, fraction: number, viewport: number): number {
+  const vis = Math.min(m.hours.length, Math.round((viewport - PAD.left - PAD.right) / m.pph));
+  const centre = clamp(fraction, 0, 1) * m.hours.length;
+  return clamp(Math.round(centre - vis / 2), 0, Math.max(0, m.hours.length - vis));
+}

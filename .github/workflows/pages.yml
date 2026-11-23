@@ -1,0 +1,63 @@
+name: Deploy web (GitHub Pages)
+
+# Builds the Expo web app and publishes it to GitHub Pages.
+#
+# ONE-TIME SETUP (until you do this the deploy job fails harmlessly and the
+# current site is untouched):
+#   1. Repo Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#      (This stops Pages serving the branch root, so only do it when you're
+#      ready for the Expo site to replace the old one.)
+#   2. Settings → Environments → github-pages → Deployment branches: allow
+#      `EXPO` (and `main` after the cutover).
+#
+# CUTOVER: when the EXPO branch is merged, change `branches: [EXPO]` below to
+# `branches: [main]`.
+
+on:
+  push:
+    branches: [EXPO]
+    paths: ["app/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Typecheck and test (a broken build never deploys)
+        run: npm run typecheck && npm test -- --ci
+      - name: Export web (also fetches CanvasKit)
+        run: npm run export:web
+        env:
+          CI: "1"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,13 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import type { WarningItem, WeatherPayload } from "../core/payload";
 import { Meteogram } from "../chart/Meteogram";
-import { buildChartModel } from "../chart/model";
+import type { MeteogramControl } from "../chart/MeteogramInner";
+import { browseStartHour, buildChartModel, visibleFraction } from "../chart/model";
 import { DARK_PALETTE, LIGHT_PALETTE } from "../chart/palette";
 import { KEYS, load, save } from "../data/storage";
 import { useSettings } from "../settings";
 import type { Location } from "../core/types";
+import { nextHoursSummary } from "../core/insights";
+import { weekStripDays } from "../core/weekStrip";
 import { Card, Txt } from "./kit";
+import { WeekStrip } from "./WeekStrip";
 
 const ZOOMS = [1, 2, 3, 4, 5] as const;
 
@@ -26,6 +30,8 @@ export function ChartSection({ data, location, warnings, nowMs }: {
   const [width, setWidth] = useState(0);
   const leftTime = useRef<number | null>(null);   // moment at the left edge, kept across zoom changes
   const keepTime = useRef<number | null>(null);
+  const control = useRef<MeteogramControl | null>(null);
+  const [scroll, setScroll] = useState({ x: 0, viewport: 0 });
 
   useEffect(() => {
     load(KEYS.chartDays).then((v) => { const n = Number(v); if (ZOOMS.includes(n as 1)) setDays(n); });
@@ -39,6 +45,20 @@ export function ChartSection({ data, location, warnings, nowMs }: {
     hours, days, viewportWidth: width || 900, lat: location.lat, lon: location.lon,
     warnings, tz: location.timezone, nowSec,
   }), [hours, days, width, location, warnings, nowSec]);
+
+  const summary = useMemo(
+    () => nextHoursSummary(hours, nowSec, location.timezone, warnings) ?? "",
+    [hours, nowSec, location.timezone, warnings],
+  );
+  const stripDays = useMemo(
+    () => weekStripDays(hours, location.timezone, location.lat, location.lon),
+    [hours, location],
+  );
+  const frame = useMemo(
+    () => (scroll.viewport ? visibleFraction(model, scroll.x, scroll.viewport) : [0, 1] as [number, number]),
+    [model, scroll],
+  );
+  const onMetrics = useCallback((x: number, viewport: number) => setScroll({ x, viewport }), []);
 
   const pickZoom = (n: number) => {
     keepTime.current = leftTime.current;
@@ -66,9 +86,15 @@ export function ChartSection({ data, location, warnings, nowMs }: {
         </View>
       </View>
 
+      {summary ? <Txt style={styles.summary} accessibilityLiveRegion="polite">{summary}</Txt> : null}
+      <WeekStrip days={stripDays} frame={frame}
+        onSelectHour={(i) => control.current?.scrollToHour(i, true)}
+        onBrowse={(f) => control.current?.scrollToHour(browseStartHour(model, f, scroll.viewport || width), false)} />
+
       {width > 0 && (
         <Meteogram
           model={model} P={P} resetKey={location.id}
+          controlRef={control} onScrollMetrics={onMetrics}
           keepTime={keepTime.current}
           onScrollTime={(t) => { leftTime.current = t; }}
           textColor={tokens.text} mutedColor={tokens.textMuted} cardColor={tokens.selectBg} borderColor={tokens.cardBorder}
@@ -96,6 +122,7 @@ const styles = StyleSheet.create({
   zoomBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 9 },
   zoomText: { fontSize: 12 },
   bold: { fontWeight: "700" },
+  summary: { fontSize: 14, lineHeight: 20 },
   legend: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   swatch: { width: 16, height: 3, borderRadius: 2 },
