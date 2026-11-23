@@ -66,6 +66,8 @@ export interface WarningItem {
   id: string;
   level: WarningLevel;
   headline: string;
+  /** MetService hazard type, e.g. "Heavy Rain". */
+  event?: string;
   onset?: number | null;
   expires?: number | null;
   areaDescription?: string;
