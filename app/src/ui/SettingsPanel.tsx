@@ -6,6 +6,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LOCATIONS } from "../core/locations";
 import { useSettings, type ThemeChoice } from "../settings";
 import { Txt } from "./kit";
+import { applyNow, checkAndFetch, otaEnabled, runningLabel } from "../updates";
 
 const CHOICES: { id: ThemeChoice; label: string }[] = [
   { id: "auto", label: "Auto" }, { id: "light", label: "Light" }, { id: "dark", label: "Dark" },
@@ -14,6 +15,13 @@ const CHOICES: { id: ThemeChoice; label: string }[] = [
 export function SettingsPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { tokens, themeChoice, setThemeChoice, location, setLocationId } = useSettings();
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [upd, setUpd] = useState<"idle" | "checking" | "ready" | "none" | "error">("idle");
+  const updText = { idle: "Check for update", checking: "Checking…", ready: "Update ready: tap to restart", none: "Up to date", error: "Couldn't check" }[upd];
+  const onUpdate = () => {
+    if (upd === "ready") { applyNow(); return; }
+    setUpd("checking");
+    checkAndFetch().then((r) => setUpd(r ? "ready" : "none")).catch(() => setUpd("error"));
+  };
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close settings" />
@@ -48,6 +56,16 @@ export function SettingsPanel({ visible, onClose }: { visible: boolean; onClose:
               <Feather name="chevron-right" size={18} color={tokens.textMuted} />
             </Pressable>
             <AlertsPanel visible={alertsOpen} onClose={() => setAlertsOpen(false)} />
+
+            <Txt tone="muted" style={styles.section}>App</Txt>
+            <Pressable onPress={otaEnabled ? onUpdate : undefined} disabled={!otaEnabled || upd === "checking"}
+              accessibilityRole="button" style={[styles.loc, { borderColor: tokens.cardBorder }]}>
+              <View style={styles.grow}>
+                <Txt style={styles.locText}>{otaEnabled ? updText : "Updates"}</Txt>
+                <Txt tone="muted" style={styles.hint}>{runningLabel()}</Txt>
+              </View>
+              {otaEnabled && <Feather name={upd === "ready" ? "refresh-cw" : "download-cloud"} size={18} color={tokens.textMuted} />}
+            </Pressable>
           </>
         )}
 
@@ -89,4 +107,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth,
   },
   locText: { fontSize: 15 },
+  grow: { flex: 1 },
+  hint: { fontSize: 12, marginTop: 2 },
 });

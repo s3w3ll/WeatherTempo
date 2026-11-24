@@ -48,6 +48,27 @@ jobs:
         run: npm run export:web
         env:
           CI: "1"
+
+      # Over-the-air update for the iOS app: the same JS, built for iOS, served at /updates/ios/.
+      # Held back (with a warning) if the native side changed without a runtimeVersion bump, so new
+      # JS never reaches an ipa that can't run it. See app/scripts/native-signature.mjs.
+      - name: Check the native side is unchanged for this runtimeVersion
+        id: native
+        continue-on-error: true
+        run: npm run native:check
+      - name: Export the iOS update
+        if: steps.native.outcome == 'success'
+        run: |
+          npm run export:ios-update
+          mkdir -p dist/updates/ios
+          cp -R dist-ios/_expo dist-ios/assets dist-ios/manifest.json dist/updates/ios/
+          ls -R dist/updates/ios | head -20
+        env:
+          CI: "1"
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Warn that the iOS update was held back
+        if: steps.native.outcome != 'success'
+        run: echo "::warning::Native side changed without a runtimeVersion bump; no iOS OTA update published. Bump expo.runtimeVersion in app/app.json and run npm run native:record."
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app/dist

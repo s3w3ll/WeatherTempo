@@ -15,6 +15,7 @@
     "expo-notifications": "~58.1.9",
     "expo-status-bar": "~58.0.5",
     "expo-task-manager": "~58.0.14",
+    "expo-updates": "~58.0.22",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -36,7 +37,10 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "setup:web": "setup-skia-web public",
-    "export:web": "setup-skia-web public && expo export -p web"
+    "export:web": "setup-skia-web public && expo export -p web",
+    "native:check": "node scripts/native-signature.mjs --check",
+    "native:record": "node scripts/native-signature.mjs --record",
+    "export:ios-update": "expo export -p ios --output-dir dist-ios && node scripts/update-manifest.mjs dist-ios"
   },
   "private": true,
   "jest": {

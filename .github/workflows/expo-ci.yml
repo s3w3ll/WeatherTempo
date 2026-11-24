@@ -26,6 +26,8 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
+      - name: Native side unchanged for this runtimeVersion (else OTA updates are held back)
+        run: npm run native:check
       - name: Typecheck
         run: npm run typecheck
       - name: Test (tides vs LINZ table, insights, locations)

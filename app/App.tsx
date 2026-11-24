@@ -4,6 +4,7 @@ import { ActivityIndicator, Platform, RefreshControl, ScrollView, StyleSheet, Vi
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { setUpBackground } from "./src/alerts/background";
 import { configureNotifications } from "./src/alerts/notify";
+import { useOtaUpdates } from "./src/updates";
 import { refreshAndReplan } from "./src/alerts/refresh";
 import { useWeather } from "./src/data/useWeather";
 import { SettingsProvider, useSettings } from "./src/settings";
@@ -35,6 +36,7 @@ function Dashboard() {
 
   // Native: show alerts in the foreground, register the background task once.
   useEffect(() => { configureNotifications(); setUpBackground(); }, []);
+  useOtaUpdates();
   // After each successful fetch, check warnings and re-plan scheduled alerts.
   useEffect(() => {
     if (Platform.OS !== "web" && weather.fetchedAt) refreshAndReplan("app", location.id);

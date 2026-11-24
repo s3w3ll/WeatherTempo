@@ -3,6 +3,13 @@
     "name": "WeatherTempo",
     "slug": "weathertempo",
     "version": "1.0.0",
+    "runtimeVersion": "1",
+    "updates": {
+      "url": "https://weathertempo.forgesync.co.nz/updates/ios/manifest.json",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -32,7 +39,8 @@
       "expo-font",
       "expo-background-task",
       "expo-notifications",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "expo-updates"
     ],
     "scheme": "weathertempo"
   }
