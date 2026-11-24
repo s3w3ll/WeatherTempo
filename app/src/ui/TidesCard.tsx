@@ -4,6 +4,7 @@ import { Platform, Pressable, StyleSheet, View, type LayoutChangeEvent } from "r
 import { SkiaGate } from "../chart/SkiaGate";
 import type { TideMiniProps } from "../chart/TideMiniInner";
 import { buildTideModel, TIDE_HIGH_COLOR, TIDE_LOW_COLOR } from "../chart/tideModel";
+import { DARK_PALETTE, LIGHT_PALETTE } from "../chart/palette";
 import { getNextTides, tideHeight } from "../core/tides";
 import type { Location } from "../core/types";
 import { useSettings } from "../settings";
@@ -34,9 +35,11 @@ export function TidesCard({ location, nowMs }: { location: Location; nowMs: numb
   }, [port, minute]);
 
   const model = useMemo(
-    () => (port && width > 0 ? buildTideModel(port, location.timezone, minute * 60_000, width, CHART_H) : null),
-    [port, location.timezone, minute, width],
+    () => (port && width > 0 ? buildTideModel(port, location.timezone, minute * 60_000, width, CHART_H, location.lat, location.lon) : null),
+    [port, location.timezone, location.lat, location.lon, minute, width],
   );
+  const P = tokens.scheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
+  const sky = { day: P.bgDay, twilight: P.bgTwilight, night: P.bgNight };
 
   if (!port || !view) return null;   // inland: no tides panel
 
@@ -95,7 +98,8 @@ export function TidesCard({ location, nowMs }: { location: Location; nowMs: numb
               height={CHART_H}
               props={{
                 model, curve: tokens.tideCurve, fillA: tokens.tideFillA, fillB: tokens.tideFillB, fillC: tokens.tideFillC,
-                bg: tokens.tideCanvas, cursorX: hover ? hoverX : null, cursorY,
+                bg: tokens.tideCanvas,
+                skyColors: sky, cursorX: hover ? hoverX : null, cursorY,
               }}
             />
           </Pressable>

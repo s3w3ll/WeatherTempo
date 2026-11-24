@@ -4,7 +4,8 @@
  * like model.ts. Ported from drawTideMiniChart() in the website's app.js.
  */
 import { findTideEvents, getTodayCurve, tideHeight } from "../core/tides";
-import type { TideEvent } from "../core/types";
+import { skyStops } from "../core/insights";
+import type { SkyPhase, TideEvent } from "../core/types";
 import type { Pt } from "./curve";
 
 export const TIDE_PAD_V = 8;
@@ -18,6 +19,8 @@ export interface TideChartModel {
   pts: Pt[];
   events: (TideEvent & { x: number; y: number })[];
   now: { x: number; y: number } | null;
+  /** Day / twilight / night bands across the chart (position 0–1), same source as the weather chart; empty without coordinates. */
+  sky: { pos: number; phase: SkyPhase }[];
   hMin: number; hMax: number;
   /** x → time (ms) and time → x. */
   timeAt(x: number): number;
@@ -32,7 +35,9 @@ export interface TideHover {
   near: "high" | "low" | null;
 }
 
-export function buildTideModel(portId: string, tz: string, nowMs: number, W: number, H: number): TideChartModel | null {
+export function buildTideModel(
+  portId: string, tz: string, nowMs: number, W: number, H: number, lat?: number | null, lon?: number | null,
+): TideChartModel | null {
   const curve = getTodayCurve(portId, tz, 48, nowMs);
   if (curve.length < 2) return null;
   const startMs = curve[0].time.getTime();
@@ -45,9 +50,13 @@ export function buildTideModel(portId: string, tz: string, nowMs: number, W: num
   const yOf = (h: number) => H - TIDE_PAD_V - ((h - hMin) / (hMax - hMin)) * (H - TIDE_PAD_V * 2);
   const xOfMs = (ms: number) => ((ms - startMs) / spanMs) * W;
 
+  // skyStops spans first hour .. last hour + 1h, so hand it the two ends of the curve.
+  const sky = (skyStops([{ validTimeUtc: startMs / 1000 }, { validTimeUtc: (startMs + spanMs) / 1000 - 3600 }], lat, lon) ?? [])
+    .map((s) => ({ pos: Math.max(0, Math.min(1, (s.t * 1000 - startMs) / spanMs)), phase: s.phase }));
+
   const nfrac = (nowMs - startMs) / spanMs;
   return {
-    W, H, startMs, spanMs, hMin, hMax,
+    W, H, startMs, spanMs, hMin, hMax, sky,
     pts: curve.map((p, i) => ({ x: (i / (curve.length - 1)) * W, y: yOf(p.height) })),
     events: raw.map((e) => ({ ...e, x: xOfMs(e.time.getTime()), y: yOf(e.height) })),
     now: nfrac >= 0 && nfrac <= 1 ? { x: nfrac * W, y: yOf(tideHeight(portId, nowMs)!) } : null,

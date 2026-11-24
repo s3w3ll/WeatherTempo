@@ -46,3 +46,15 @@ describe("tide mini-chart model", () => {
     expect(m.hover(W + 50).timeMs).toBe(m.startMs + m.spanMs);
   });
 });
+
+describe("tide chart sky bands", () => {
+  it("covers the 48 h span with day and night, and is empty without coordinates", () => {
+    const withSky = buildTideModel("new-brighton", TZ, NOW, 800, 200, -43.53, 172.64)!;
+    expect(withSky.sky.length).toBeGreaterThan(4);
+    expect(withSky.sky[0].pos).toBe(0);
+    expect(withSky.sky[withSky.sky.length - 1].pos).toBe(1);
+    expect(withSky.sky.map((s) => s.phase)).toEqual(expect.arrayContaining(["day", "night"]));
+    expect(withSky.sky.every((s, i, a) => i === 0 || s.pos >= a[i - 1].pos)).toBe(true);
+    expect(buildTideModel("new-brighton", TZ, NOW, 800, 200)!.sky).toEqual([]);
+  });
+});
