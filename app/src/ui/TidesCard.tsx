@@ -61,7 +61,11 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, width, port, !!model]);
   const P = tokens.scheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
-  const sky = { day: P.bgDay, twilight: P.bgTwilight, night: P.bgNight };
+  // Warmer, stronger than the weather chart's wash: the tide canvas is itself blue, so a faint cream
+  // tint over it still reads as "light blue". These read as sunlit day / dusk / night.
+  const sky = tokens.scheme === "dark"
+    ? { day: "rgba(255,214,140,0.26)", twilight: "rgba(200,100,140,0.28)", night: "rgba(0,0,10,0.38)" }
+    : { day: "rgba(255,214,120,0.80)", twilight: "rgba(214,140,170,0.55)", night: "rgba(40,60,120,0.42)" };
 
   if (!port || !view) return null;   // inland: no tides panel
 
