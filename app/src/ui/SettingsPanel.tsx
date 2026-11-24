@@ -1,5 +1,7 @@
 import Feather from "@expo/vector-icons/Feather";
-import React from "react";
+import React, { useState } from "react";
+import { Platform } from "react-native";
+import { AlertsPanel } from "./AlertsPanel";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { LOCATIONS } from "../core/locations";
 import { useSettings, type ThemeChoice } from "../settings";
@@ -11,6 +13,7 @@ const CHOICES: { id: ThemeChoice; label: string }[] = [
 
 export function SettingsPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { tokens, themeChoice, setThemeChoice, location, setLocationId } = useSettings();
+  const [alertsOpen, setAlertsOpen] = useState(false);
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close settings" />
@@ -35,6 +38,18 @@ export function SettingsPanel({ visible, onClose }: { visible: boolean; onClose:
             );
           })}
         </View>
+
+        {Platform.OS !== "web" && (
+          <>
+            <Txt tone="muted" style={styles.section}>Notifications</Txt>
+            <Pressable onPress={() => setAlertsOpen(true)} accessibilityRole="button"
+              style={[styles.loc, { borderColor: tokens.cardBorder }]}>
+              <Txt style={styles.locText}>Alerts and diagnostics</Txt>
+              <Feather name="chevron-right" size={18} color={tokens.textMuted} />
+            </Pressable>
+            <AlertsPanel visible={alertsOpen} onClose={() => setAlertsOpen(false)} />
+          </>
+        )}
 
         <Txt tone="muted" style={styles.section}>Location</Txt>
         <ScrollView style={styles.list}>

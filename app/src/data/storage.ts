@@ -7,6 +7,9 @@ export const KEYS = {
   theme: "weatherTempo.theme",
   location: "weatherTempo.location",
   chartDays: "weatherTempo.chartDays",
+  alerts: "weatherTempo.alerts",
+  warningMemory: "weatherTempo.warningMemory",
+  diagnostics: "weatherTempo.diagnostics",
 } as const;
 
 export async function load(key: string): Promise<string | null> {

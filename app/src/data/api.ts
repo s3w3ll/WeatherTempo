@@ -59,13 +59,26 @@ export async function fetchWeather(loc: Location, fetchImpl = fetchWithTimeout):
  * weather payload instead, which has no `warnings` list.
  */
 export async function fetchWarnings(locationId: string, fetchImpl = fetchWithTimeout): Promise<WarningItem[] | null> {
+  return (await fetchWarningsFull(locationId, fetchImpl))?.warnings ?? null;
+}
+
+export interface WarningsResult {
+  warnings: WarningItem[];
+  /** false when MetService's feed was only partly readable, so absence proves nothing. */
+  complete: boolean;
+}
+
+export async function fetchWarningsFull(locationId: string, fetchImpl = fetchWithTimeout): Promise<WarningsResult | null> {
   try {
     const resp = await fetchImpl(`${WORKER_URL}/warnings?location=${encodeURIComponent(locationId)}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     if (!Array.isArray(data.warnings)) throw new Error("no warnings list in response");
     const nowSec = Date.now() / 1000;
-    return (data.warnings as WarningItem[]).filter((w) => !w.expires || w.expires > nowSec);
+    return {
+      warnings: (data.warnings as WarningItem[]).filter((w) => !w.expires || w.expires > nowSec),
+      complete: data.complete !== false,
+    };
   } catch (err) {
     console.warn("[WeatherTempo] Warnings unavailable:", (err as Error).message);
     return null;

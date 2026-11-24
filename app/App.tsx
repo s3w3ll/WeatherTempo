@@ -2,6 +2,9 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { setUpBackground } from "./src/alerts/background";
+import { configureNotifications } from "./src/alerts/notify";
+import { refreshAndReplan } from "./src/alerts/refresh";
 import { useWeather } from "./src/data/useWeather";
 import { SettingsProvider, useSettings } from "./src/settings";
 import { ChartSection } from "./src/ui/ChartSection";
@@ -29,6 +32,13 @@ function Dashboard() {
   const weather = useWeather(location);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const nowMs = useNow();
+
+  // Native: show alerts in the foreground, register the background task once.
+  useEffect(() => { configureNotifications(); setUpBackground(); }, []);
+  // After each successful fetch, check warnings and re-plan scheduled alerts.
+  useEffect(() => {
+    if (Platform.OS !== "web" && weather.fetchedAt) refreshAndReplan("app", location.id);
+  }, [weather.fetchedAt, location.id]);
 
   useEffect(() => {
     if (Platform.OS === "web") document.title = `WeatherTempo — ${location.name}`;

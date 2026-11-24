@@ -29,7 +29,9 @@
       "themeColor": "#ffd0c2"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-background-task",
+      "expo-notifications"
     ],
     "scheme": "weathertempo"
   }
