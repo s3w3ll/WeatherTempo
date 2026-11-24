@@ -11,6 +11,7 @@ import { DARK_PALETTE, LIGHT_PALETTE } from "../chart/palette";
 import { getNextTides, tideHeight } from "../core/tides";
 import type { Location } from "../core/types";
 import { useSettings } from "../settings";
+import { LIGHT } from "../theme/tokens";
 import { Card, Txt } from "./kit";
 
 const CHART_H = 200;
@@ -61,11 +62,9 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, width, port, !!model]);
   const P = tokens.scheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
-  // Warmer, stronger than the weather chart's wash: the tide canvas is itself blue, so a faint cream
-  // tint over it still reads as "light blue". These read as sunlit day / dusk / night.
-  const sky = tokens.scheme === "dark"
-    ? { day: "rgba(255,214,140,0.26)", twilight: "rgba(200,100,140,0.28)", night: "rgba(0,0,10,0.38)" }
-    : { day: "rgba(255,214,120,0.80)", twilight: "rgba(214,140,170,0.55)", night: "rgba(40,60,120,0.42)" };
+  // The shading behind the curve is light in both themes (day #ffdea3, night #d5dbe5), so the curve, fills
+  // and cursor use the light-theme colours there; the card chrome around it still follows the theme.
+  const ink = "rgba(20,40,80,0.65)";
 
   if (!port || !view) return null;   // inland: no tides panel
 
@@ -186,8 +185,8 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
                       native={() => require("../chart/TideMiniInner").default}
                       height={CHART_H}
                       props={{
-                        model, curve: tokens.tideCurve, fillA: tokens.tideFillA, fillB: tokens.tideFillB, fillC: tokens.tideFillC,
-                        bg: tokens.tideCanvas, skyColors: sky, dayDiv: P.dayDiv, cursorX: hover ? hoverX : null, cursorY,
+                        model, curve: LIGHT.tideCurve, fillA: LIGHT.tideFillA, fillB: LIGHT.tideFillB, fillC: LIGHT.tideFillC,
+                        bg: LIGHT.tideCanvas, ink, dayDiv: LIGHT_PALETTE.dayDiv, cursorX: hover ? hoverX : null, cursorY,
                       }}
                     />
                   </Pressable>

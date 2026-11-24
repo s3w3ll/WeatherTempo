@@ -1,5 +1,5 @@
 import { buildChartModel, dayColumns as dayColumnsOf, dividerXs, PAD } from "../model";
-import { buildTideModel, cardEvents, layoutTideCards, tideScrollForNow, TIDE_PAD_V } from "../tideModel";
+import { buildTideModel, cardEvents, layoutTideCards, SHADE, shadeFor, tideScrollForNow, TIDE_PAD_V } from "../tideModel";
 import { generateSampleData } from "../../core/sample";
 import { getLocation } from "../../core/locations";
 
@@ -119,13 +119,31 @@ describe("tide card selection by type", () => {
   });
 });
 
-describe("tide chart sky bands", () => {
-  it("covers the span with day and night, and is empty without coordinates", () => {
+describe("tide chart daylight shading", () => {
+  it("follows the sun: lightest at sunrise/sunset, a touch darker at noon and at midnight", () => {
+    const peak = 70, depth = 30;
+    expect(shadeFor(0, peak, depth)).toEqual(SHADE.dayLight);                 // #ffdea3 at the horizon
+    expect(shadeFor(peak, peak, depth)).toEqual(SHADE.dayDark);               // darkest at solar noon
+    expect(shadeFor(-6, peak, depth)).toEqual(SHADE.nightLight);              // #d5dbe5 at the edge of night
+    expect(shadeFor(-6 - depth, peak, depth)).toEqual(SHADE.nightDark);       // darkest at midnight
+    const mid = shadeFor(35, peak, depth);
+    for (let i = 0; i < 3; i++) {
+      expect(mid[i]).toBeLessThan(SHADE.dayLight[i]);
+      expect(mid[i]).toBeGreaterThan(SHADE.dayDark[i]);
+    }
+  });
+  it("blends night into day through twilight rather than jumping", () => {
+    const a = shadeFor(-3, 70, 30);
+    expect(a[0]).toBeGreaterThan(SHADE.nightLight[0]);
+    expect(a[0]).toBeLessThan(SHADE.dayLight[0]);
+  });
+  it("covers the span with colour stops in order, and is empty without coordinates", () => {
     const t = tide(5);
-    expect(t.sky.length).toBeGreaterThan(4);
-    expect(t.sky.map((s) => s.phase)).toEqual(expect.arrayContaining(["day", "night"]));
-    expect(t.sky.every((s, i, a) => i === 0 || s.pos >= a[i - 1].pos)).toBe(true);
-    expect(tide(5, 900, false).sky).toEqual([]);
+    expect(t.shade.length).toBeGreaterThan(100);
+    expect(t.shade.every((s, i, a) => i === 0 || s.pos >= a[i - 1].pos)).toBe(true);
+    const reds = new Set(t.shade.map((s) => s.rgb.join(",")));
+    expect(reds.size).toBeGreaterThan(10);   // a smooth gradient, not two flat colours
+    expect(tide(5, 900, false).shade).toEqual([]);
   });
 });
 

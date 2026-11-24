@@ -3,15 +3,33 @@
  * first hour, pixels per hour and padding), so with both set to the same zoom
  * their x-axes line up exactly. Pure, like model.ts.
  */
-import { dayBoundaries, skyStops } from "../core/insights";
+import { dayBoundaries, solarElevation } from "../core/insights";
 import { findTideEvents, sampleTide, tideHeight } from "../core/tides";
-import type { SkyPhase, TideEvent } from "../core/types";
+import type { TideEvent } from "../core/types";
 import type { Pt } from "./curve";
 import { PAD, clamp } from "./model";
 
 export const TIDE_PAD_V = 8;
 export const TIDE_HIGH_COLOR = "#ffa820";
 export const TIDE_LOW_COLOR = "#3ee5ff";
+
+export type RGB = [number, number, number];
+/** Daylight and night shading: lightest at the edges of each period, a touch darker at its midpoint. */
+export const SHADE = {
+  dayLight: [0xff, 0xde, 0xa3] as RGB,     // #ffdea3 (sunrise / sunset)
+  dayDark: [0xe0, 0xc3, 0x8f] as RGB,      // slightly darker at solar noon
+  nightLight: [0xd5, 0xdb, 0xe5] as RGB,   // #d5dbe5 (dusk / dawn)
+  nightDark: [0xbb, 0xc1, 0xca] as RGB,    // slightly darker at the dead of night
+};
+const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)) as RGB;
+const TWILIGHT_DEG = 6;   // civil twilight: the band that blends night into day
+
+/** Background colour for a sun elevation; `peak` / `depth` are how high / low the sun gets in the span. */
+export function shadeFor(elev: number, peak: number, depth: number): RGB {
+  if (elev >= 0) return mix(SHADE.dayLight, SHADE.dayDark, clamp(elev / peak, 0, 1));
+  if (elev > -TWILIGHT_DEG) return mix(SHADE.nightLight, SHADE.dayLight, (elev + TWILIGHT_DEG) / TWILIGHT_DEG);
+  return mix(SHADE.nightLight, SHADE.nightDark, clamp((-TWILIGHT_DEG - elev) / depth, 0, 1));
+}
 
 export interface TideChartInput {
   /** UTC seconds of the weather chart's first hour: the shared x origin. */
@@ -40,8 +58,8 @@ export interface TideChartModel {
   events: (TideEvent & { x: number; y: number })[];
   now: { x: number; y: number } | null;
   hMin: number; hMax: number;
-  /** Day / twilight / night bands across the chart (position 0-1); empty without coordinates. */
-  sky: { pos: number; phase: SkyPhase }[];
+  /** Background colour stops across the chart (position 0-1) following the sun; empty without coordinates. */
+  shade: { pos: number; rgb: RGB }[];
   /** x of each local midnight, and one labelled column per local day (as on the weather chart). */
   dividers: number[];
   dayCols: TideDayColumn[];
@@ -75,9 +93,17 @@ export function buildTideModel(portId: string, nowMs: number, o: TideChartInput)
   const hMax = Math.max(...heights) + 0.1;
   const yOf = (h: number) => o.H - TIDE_PAD_V - ((h - hMin) / (hMax - hMin)) * (o.H - TIDE_PAD_V * 2);
 
-  // skyStops spans first hour .. last hour + 1h, so hand it the two ends of the curve.
-  const sky = (skyStops([{ validTimeUtc: o.t0Sec }, { validTimeUtc: endMs / 1000 - 3600 }], o.lat, o.lon) ?? [])
-    .map((s) => ({ pos: clamp(xOf(s.t * 1000) / W, 0, 1), phase: s.phase }));
+  // Colour follows the sun's height: light gold at sunrise/sunset, a little darker toward noon; pale
+  // blue-grey at dusk/dawn, a little darker toward midnight.
+  const shade: { pos: number; rgb: RGB }[] = [];
+  if (o.lat != null && o.lon != null) {
+    const STEP = 15 * 60_000;
+    const samples: { ms: number; e: number }[] = [];
+    for (let t = startMs; t <= endMs; t += STEP) samples.push({ ms: t, e: solarElevation(t / 1000, o.lat, o.lon) });
+    const peak = Math.max(1, ...samples.map((x) => x.e));
+    const depth = Math.max(1, -TWILIGHT_DEG - Math.min(...samples.map((x) => x.e)));
+    for (const x of samples) shade.push({ pos: clamp(xOf(x.ms) / W, 0, 1), rgb: shadeFor(x.e, peak, depth) });
+  }
 
   // Day dividers and day columns, computed exactly as the weather chart does from its hours.
   const hx = (i: number) => PAD.left + i * pph + pph / 2;
@@ -102,7 +128,7 @@ export function buildTideModel(portId: string, nowMs: number, o: TideChartInput)
   const timeAt = (x: number) => clamp(startMs + ((x - PAD.left - pph / 2) / pph) * 3_600_000, startMs, endMs);
   const nx = xOf(nowMs);
   return {
-    W, H: o.H, pph, startMs, endMs, hMin, hMax, sky, dividers, dayCols, xOf, timeAt,
+    W, H: o.H, pph, startMs, endMs, hMin, hMax, shade, dividers, dayCols, xOf, timeAt,
     pts: curve.map((p) => ({ x: xOf(p.time.getTime()), y: yOf(p.height) })),
     events: raw.map((e) => ({ ...e, x: xOf(e.time.getTime()), y: yOf(e.height) })),
     now: nowMs >= startMs && nowMs <= endMs ? { x: nx, y: yOf(tideHeight(portId, nowMs)!) } : null,
