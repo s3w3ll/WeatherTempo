@@ -1,4 +1,4 @@
-import { buildTideModel, TIDE_PAD_V } from "../tideModel";
+import { buildTideModel, layoutTideCards, TIDE_PAD_V } from "../tideModel";
 
 const TZ = "Pacific/Auckland";
 const NOW = Date.UTC(2026, 10, 24, 0, 0);   // 1pm NZDT, Tue 24 Nov 2026
@@ -56,5 +56,22 @@ describe("tide chart sky bands", () => {
     expect(withSky.sky.map((s) => s.phase)).toEqual(expect.arrayContaining(["day", "night"]));
     expect(withSky.sky.every((s, i, a) => i === 0 || s.pos >= a[i - 1].pos)).toBe(true);
     expect(buildTideModel("new-brighton", TZ, NOW, 800, 200)!.sky).toEqual([]);
+  });
+});
+
+describe("layoutTideCards", () => {
+  it("centres cards under their points when there is room", () => {
+    expect(layoutTideCards([100, 300, 500], 600, 80, 6)).toEqual([60, 260, 460]);
+  });
+  it("pushes crowded cards apart in order, inside the width", () => {
+    const l = layoutTideCards([40, 80, 120, 160], 340, 80, 6);
+    for (let i = 1; i < l.length; i++) expect(l[i] - l[i - 1]).toBeGreaterThanOrEqual(86);
+    expect(l[0]).toBeGreaterThanOrEqual(0);
+    expect(l[3] + 80).toBeLessThanOrEqual(340);
+  });
+  it("pulls a run back from the right edge", () => {
+    const l = layoutTideCards([300, 320, 340], 360, 80, 6);
+    expect(l[2] + 80).toBeLessThanOrEqual(360);
+    expect(l[1] + 80 + 6).toBeLessThanOrEqual(l[2]);
   });
 });

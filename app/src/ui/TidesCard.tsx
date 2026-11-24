@@ -3,7 +3,7 @@ import React, { useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { SkiaGate } from "../chart/SkiaGate";
 import type { TideMiniProps } from "../chart/TideMiniInner";
-import { buildTideModel, TIDE_HIGH_COLOR, TIDE_LOW_COLOR } from "../chart/tideModel";
+import { buildTideModel, layoutTideCards, TIDE_HIGH_COLOR, TIDE_LOW_COLOR } from "../chart/tideModel";
 import { DARK_PALETTE, LIGHT_PALETTE } from "../chart/palette";
 import { getNextTides, tideHeight } from "../core/tides";
 import type { Location } from "../core/types";
@@ -12,6 +12,8 @@ import { Card, Txt } from "./kit";
 
 const CHART_H = 200;
 const TIP_W = 170;
+const CARD_H = 62;   // height of a tide card
+const LEAD = 8;      // length of the line from the curve point down to its card
 
 /** Tide curve for today and tomorrow, the level now, and the next four highs/lows. */
 export function TidesCard({ location, nowMs }: { location: Location; nowMs: number }) {
@@ -122,23 +124,37 @@ export function TidesCard({ location, nowMs }: { location: Location; nowMs: numb
         )}
       </View>
 
-      <View style={styles.list}>
-        {view.events.length === 0 && <Txt tone="muted">No tide data available</Txt>}
-        {view.events.map((ev) => {
-          const high = ev.type === "high";
-          return (
-            <View key={ev.time.getTime()} style={[styles.event, { backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
-              accessible accessibilityLabel={`${high ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`}>
-              <Txt style={styles.emoji}>{high ? "🌊" : "🏖️"}</Txt>
-              <View style={styles.flex}>
-                <Txt tone="strong" style={styles.type}>{high ? "High Tide" : "Low Tide"}</Txt>
-                <Txt tone="muted" style={styles.time}>{fmt(ev.time)}</Txt>
-              </View>
-              <Txt tone="strong" style={styles.height}>{ev.height.toFixed(1)} m</Txt>
-            </View>
-          );
-        })}
-      </View>
+      {/* Each next high/low sits under its own point on the curve, so the row reads left to right in time. */}
+      {view.events.length === 0 && <Txt tone="muted">No tide data available</Txt>}
+      {model && (() => {
+        // The chart's own events (so each card matches its point exactly): the next four from now.
+        const shown = model.events
+          .filter((e) => e.time.getTime() >= minute * 60_000)
+          .slice(0, 4)
+          .map((e) => ({ ev: e, x: e.x }));
+        const gap = 6;
+        const cardW = Math.max(60, Math.min(104, Math.floor((width - gap * (shown.length - 1)) / Math.max(1, shown.length))));
+        const lefts = layoutTideCards(shown.map((e) => e.x), width, cardW, gap);
+        return (
+          <View style={{ height: CARD_H + LEAD }}>
+            {shown.map(({ ev, x }, i) => {
+              const high = ev.type === "high";
+              return (
+                <React.Fragment key={ev.time.getTime()}>
+                  <View pointerEvents="none"
+                    style={[styles.lead, { left: Math.round(x), backgroundColor: high ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }]} />
+                  <View style={[styles.event, { left: lefts[i], width: cardW, top: LEAD, backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
+                    accessible accessibilityLabel={`${high ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`}>
+                    <Txt style={styles.type} numberOfLines={1}>{high ? "🌊 High" : "🏖️ Low"}</Txt>
+                    <Txt tone="strong" style={styles.time} numberOfLines={1}>{fmt(ev.time)}</Txt>
+                    <Txt tone="muted" style={styles.height}>{ev.height.toFixed(1)} m</Txt>
+                  </View>
+                </React.Fragment>
+              );
+            })}
+          </View>
+        );
+      })()}
     </Card>
   );
 }
@@ -161,13 +177,12 @@ const styles = StyleSheet.create({
   tipRow: { flexDirection: "row", justifyContent: "space-between" },
   tipLabel: { fontSize: 12 },
   tipVal: { fontSize: 12, fontWeight: "600" },
-  list: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  lead: { position: "absolute", top: 0, width: 2, height: LEAD, marginLeft: -1, borderRadius: 1 },
   event: {
-    flexGrow: 1, flexBasis: "45%", minWidth: 150, flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth,
+    position: "absolute", height: CARD_H, alignItems: "center", justifyContent: "center", gap: 1,
+    paddingHorizontal: 4, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth,
   },
-  emoji: { fontSize: 22 },
-  type: { fontSize: 14, fontWeight: "600" },
+  type: { fontSize: 12, fontWeight: "600" },
   time: { fontSize: 13 },
-  height: { fontSize: 15, fontWeight: "600" },
+  height: { fontSize: 12 },
 });

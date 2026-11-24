@@ -75,3 +75,20 @@ export function buildTideModel(
     },
   };
 }
+
+/**
+ * Left edges for cards that each sit under their own point (xs ascending),
+ * centred where they can be and nudged apart when points are too close, always
+ * inside 0..W, never overlapping, and in the same left-to-right order.
+ */
+export function layoutTideCards(xs: number[], W: number, cardW: number, gap: number): number[] {
+  const maxLeft = Math.max(0, W - cardW);
+  const lefts = xs.map((x) => Math.min(Math.max(0, x - cardW / 2), maxLeft));
+  for (let i = 1; i < lefts.length; i++) lefts[i] = Math.max(lefts[i], lefts[i - 1] + cardW + gap);
+  // If the sweep pushed the last card off the right edge, pull the run back in.
+  for (let i = lefts.length - 1; i >= 0; i--) {
+    const limit = i === lefts.length - 1 ? maxLeft : lefts[i + 1] - cardW - gap;
+    lefts[i] = Math.min(lefts[i], limit);
+  }
+  return lefts.map((l) => Math.max(0, l));
+}
