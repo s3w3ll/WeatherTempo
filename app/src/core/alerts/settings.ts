@@ -16,7 +16,7 @@ export interface AlertSettings {
   uvThreshold: number;
   /** A morning summary, sent only on days the forecast UV reaches `uvThreshold`. */
   dailyUVEnabled: boolean;
-  /** Minutes after local midnight (420 = 7:00am), in the location's time zone. */
+  /** Minutes after local midnight (420 = 07:00), in the location's time zone. */
   dailyUVMinutes: number;
   /** Notify ahead of forecast rain. */
   rainEnabled: boolean;

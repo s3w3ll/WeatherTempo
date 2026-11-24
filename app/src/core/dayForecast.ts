@@ -4,6 +4,7 @@
  * renderHourlyTable() in the website's app.js.
  */
 import { degToCard, fmtHourCompact, uvLabel } from "./display";
+import { clock } from "./insights";
 import type { DailyDay, HourlyHour } from "./payload";
 
 export interface Extreme { val: number | null; utcSec: number | null }
@@ -126,7 +127,7 @@ export function hourlyTableRows(hourly: HourlyHour[], tz: string, nowSec: number
     if (!h.validTimeUtc) continue;
     const date = new Date(h.validTimeUtc * 1000);
     const day = date.toLocaleDateString("en-NZ", { timeZone: tz, weekday: "short", month: "short", day: "numeric" });
-    const time = date.toLocaleTimeString("en-NZ", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true });
+    const time = clock(h.validTimeUtc, tz);
     const isNow = Math.abs(h.validTimeUtc - nowSec) < 1800;
 
     if (day !== lastDay) {

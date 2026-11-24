@@ -97,8 +97,8 @@ describe("pressure tendency", () => {
 
 describe("time helpers", () => {
   it("formats hour labels in the forecast zone", () => {
-    expect(hourLabel(Date.UTC(2026, 10, 24, 2, 0) / 1000, TZ)).toBe("3pm");
-    expect(hourLabel(Date.UTC(2026, 10, 23, 11, 0) / 1000, TZ)).toBe("12am");
+    expect(hourLabel(Date.UTC(2026, 10, 24, 2, 0) / 1000, TZ)).toBe("15:00");
+    expect(hourLabel(Date.UTC(2026, 10, 23, 11, 0) / 1000, TZ)).toBe("00:00");
   });
   it("groups by the local calendar day, not UTC", () => {
     const a = dayKey(Date.UTC(2026, 10, 23, 10, 59) / 1000, TZ);
@@ -140,7 +140,7 @@ describe("nextHoursSummary", () => {
   });
   it("describes rain starting later with its length", () => {
     const hours = mk((i) => (i === 3 || i === 4 ? { qpf: 1.5, precipChance: 90 } : {}));
-    expect(nextHoursSummary(hours, now, TZ)).toContain("Moderate rain from 4pm, about 2 hours");
+    expect(nextHoursSummary(hours, now, TZ)).toContain("Moderate rain from 16:00, about 2 hours");
   });
   it("ignores a drizzle trace with a low chance", () => {
     const hours = mk((i) => (i === 2 ? { qpf: 0.3, precipChance: 10 } : {}));
@@ -164,7 +164,7 @@ describe("sunProtection", () => {
     const sp = sunProtection(hours, 0, TZ)!;
     expect(sp.ongoing).toBe(false);
     expect(sp.peak).toBe(9);
-    expect(sp.sentence).toBe("Sun protection 9am to 3pm (UV up to 9, very high)");
+    expect(sp.sentence).toBe("Sun protection 09:00 to 15:00 (UV up to 9, very high)");
   });
   it("is null when UV never reaches 3", () => {
     const hours = [1, 2, 2].map((u, i) => hr(T0 + i * 3600, { uvIndex: u }));
@@ -176,9 +176,9 @@ describe("warningTiming", () => {
   const now = Date.UTC(2026, 10, 24, 0, 0) / 1000; // Tue 24 Nov, 1pm NZDT
   it("in force now with no end", () => expect(warningTiming({}, now, TZ)).toBe("In force now"));
   it("until a time today", () =>
-    expect(warningTiming({ expires: now + 8 * 3600 }, now, TZ)).toBe("Until 9pm"));
+    expect(warningTiming({ expires: now + 8 * 3600 }, now, TZ)).toBe("Until 21:00"));
   it("until a time on another day includes the weekday", () =>
-    expect(warningTiming({ expires: now + 14 * 3600 }, now, TZ)).toBe("Until Wed 3am"));
+    expect(warningTiming({ expires: now + 14 * 3600 }, now, TZ)).toBe("Until Wed 03:00"));
   it("a future onset reads From … to …", () =>
-    expect(warningTiming({ onset: now + 3600, expires: now + 5 * 3600 }, now, TZ)).toBe("From 2pm to 6pm"));
+    expect(warningTiming({ onset: now + 3600, expires: now + 5 * 3600 }, now, TZ)).toBe("From 14:00 to 18:00"));
 });

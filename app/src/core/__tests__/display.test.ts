@@ -15,8 +15,8 @@ const NOW = data.hourly[13].validTimeUtc;
 
 describe("formatting", () => {
   it("formats times in the forecast zone", () => {
-    expect(fmtShortTime(NOW, TZ)).toBe("1:00 pm");
-    expect(fmtHourCompact(NOW, TZ)).toBe("1pm");
+    expect(fmtShortTime(NOW, TZ)).toBe("13:00");
+    expect(fmtHourCompact(NOW, TZ)).toBe("13:00");
     expect(fmtShortTime(null, TZ)).toBe("—");
   });
   it("describes age", () => {
@@ -28,9 +28,9 @@ describe("formatting", () => {
   });
   it("labels who measured the reading, adding age after an hour", () => {
     const nowMs = NOW * 1000;
-    expect(observedLabel(NOW - 120, "pws", TZ, nowMs)).toBe("Station reported 12:58 pm");
-    expect(observedLabel(NOW, "open-meteo", TZ, nowMs)).toBe("Forecast model, 1:00 pm");
-    expect(observedLabel(NOW - 2 * 3600, "pws", TZ, nowMs)).toBe("Station reported 11:00 am · 2h ago");
+    expect(observedLabel(NOW - 120, "pws", TZ, nowMs)).toBe("Station reported 12:58");
+    expect(observedLabel(NOW, "open-meteo", TZ, nowMs)).toBe("Forecast model, 13:00");
+    expect(observedLabel(NOW - 2 * 3600, "pws", TZ, nowMs)).toBe("Station reported 11:00 · 2h ago");
     expect(observedLabel(NOW, "something-else", TZ, nowMs)).toBeNull();
     expect(observedLabel(null, "pws", TZ, nowMs)).toBeNull();
   });
@@ -60,7 +60,7 @@ describe("conditions card data (real Worker payload)", () => {
     const strip = hourlyStrip(data.hourly, TZ, NOW, 10);
     expect(strip).toHaveLength(10);
     expect(strip[0]).toMatchObject({ time: "Now", now: true });
-    expect(strip[1].time).toMatch(/^\d{1,2}(am|pm)$/);
+    expect(strip[1].time).toMatch(/^\d{2}:00$/);
     expect(strip.every((c) => /^-?\d+°$|^—$/.test(c.temp))).toBe(true);
   });
 
@@ -86,7 +86,7 @@ describe("conditions card data (real Worker payload)", () => {
     expect(uvLabel(7.5)).toBe("8 V.High");
     const { peakUV, uvWindow } = uvInfo(data.hourly, TZ, NOW);
     expect(peakUV).toBeGreaterThanOrEqual(3);
-    expect(uvWindow).toMatch(/^\d{1,2}(am|pm)–\d{1,2}(am|pm)$/);
+    expect(uvWindow).toMatch(/^\d{2}:00–\d{2}:00$/);
   });
 
   it("uses the calendar-day high and the overnight low", () => {

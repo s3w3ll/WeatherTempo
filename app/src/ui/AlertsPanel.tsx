@@ -4,6 +4,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from "react-na
 import { refreshAndReplan } from "../alerts/refresh";
 import { ensurePermission, permissionStatus, type Permission } from "../alerts/notify";
 import { parseLog, type DiagEvent } from "../core/alerts/diagnostics";
+import { clock } from "../core/insights";
 import {
   RAIN_CHANCE_RANGE, RAIN_LEAD_OPTIONS, TEMP_RANGE, UV_RANGE,
   parseAlertSettings, sanitize, serializeAlertSettings, type AlertSettings,
@@ -15,7 +16,7 @@ import { Txt } from "./kit";
 type BoolKey = { [K in keyof AlertSettings]: AlertSettings[K] extends boolean ? K : never }[keyof AlertSettings];
 type NumKey = { [K in keyof AlertSettings]: AlertSettings[K] extends number ? K : never }[keyof AlertSettings];
 
-const hhmm = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 export function AlertsPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { tokens, location } = useSettings();
@@ -115,7 +116,7 @@ export function AlertsPanel({ visible, onClose }: { visible: boolean; onClose: (
             <View key={i} style={styles.logRow}>
               <Feather name={e.ok ? "check-circle" : "alert-circle"} size={14} color={e.ok ? tokens.green : tokens.red} />
               <View style={styles.grow}>
-                <Txt style={styles.logText}>{e.source} · {e.kind}{e.count > 1 ? ` ×${e.count}` : ""} · {new Date(e.date * 1000).toLocaleTimeString()}</Txt>
+                <Txt style={styles.logText}>{e.source} · {e.kind}{e.count > 1 ? ` ×${e.count}` : ""} · {clock(e.date, "Pacific/Auckland")}</Txt>
                 <Txt tone="muted" style={styles.hint}>{e.detail}</Txt>
               </View>
             </View>

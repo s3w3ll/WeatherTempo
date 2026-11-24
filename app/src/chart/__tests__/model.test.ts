@@ -51,7 +51,7 @@ describe("layout", () => {
     expect(buildChartModel(base({ days: 1 })).labelStride).toBe(3);      // 37 px/h
     expect(buildChartModel(base({ days: 3 })).labelStride).toBe(3);      // 12.4 px/h
     expect(buildChartModel(base({ days: 5 })).labelStride).toBe(6);      //  7.4 px/h
-    expect(buildChartModel(base({ viewportWidth: 330, days: 5 })).labelStride).toBe(12);
+    expect(buildChartModel(base({ viewportWidth: 330, days: 5 })).labelStride).toBe(24);
   });
   it("spaces wind arrows ≥ ~18 px apart, in 3 h steps", () => {
     for (const days of [1, 3, 5]) {
@@ -175,10 +175,10 @@ describe("layers", () => {
   });
   it("time labels land on stride hours", () => {
     const labels = timeLabels(m);
-    expect(labels[0].text).toBe("12am");
-    expect(labels.map((l) => l.text).slice(0, 4)).toEqual(["12am", "3am", "6am", "9am"]);
-    expect(labels[4].text).toBe("12pm");
-    expect(labels[5].text).toBe("3pm");
+    expect(labels[0].text).toBe("00:00");
+    expect(labels.map((l) => l.text).slice(0, 4)).toEqual(["00:00", "03:00", "06:00", "09:00"]);
+    expect(labels[4].text).toBe("12:00");
+    expect(labels[5].text).toBe("15:00");
   });
   it("marks one high per day and one low per night, labels kept inside the chart", () => {
     const marks = tempMarkers(m);

@@ -42,7 +42,7 @@ describe("buildDayForecast", () => {
     expect(tomorrow.precip.totalMm).toEqual(expect.any(Number));
     expect(tomorrow.precip.maxChance).toBeGreaterThanOrEqual(0);
     expect(tomorrow.uv.peak!).toBeGreaterThan(0);
-    expect(tomorrow.uv.window).toMatch(/^\d{1,2}(am|pm)–\d{1,2}(am|pm)$/);
+    expect(tomorrow.uv.window).toMatch(/^\d{2}:00–\d{2}:00$/);
     expect(tomorrow.pressure.max.val!).toBeGreaterThanOrEqual(tomorrow.pressure.min.val!);
     expect(tomorrow.sunrise).toBe(data.daily[1].sunriseTimeUtc);
   });
@@ -68,7 +68,7 @@ describe("hourlyTableRows", () => {
     const now = hours.filter((r) => r.isNow);
     expect(now).toHaveLength(1);
     expect(now[0].cells[0]).toBe("Now");
-    expect(hours[1].cells[0]).toMatch(/^\d{1,2}:00 (am|pm)$/);
+    expect(hours[1].cells[0]).toMatch(/^\d{2}:00$/);
   });
   it("formats units and dashes", () => {
     const first = rows.find((r) => r.kind === "hour") as Extract<(typeof rows)[number], { kind: "hour" }>;

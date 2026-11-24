@@ -36,12 +36,18 @@ export interface SunProtection {
 const RAD = Math.PI / 180;
 
 // ── Time formatting (local to the forecast's time zone) ──────────────────
-/** "3pm", "12am" */
+/** 24-hour clock time in `tz`: "15:00", "00:05" (midnight is 00:00, never 24:00). */
+export function clock(utcSec: number, tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false })
+    .formatToParts(new Date(utcSec * 1000));
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  const m = parts.find((p) => p.type === "minute")?.value ?? "00";
+  return `${String(h).padStart(2, "0")}:${m}`;
+}
+
+/** An hour slot as a 24-hour time: "15:00", "00:00". */
 export function hourLabel(utcSec: number, tz: string): string {
-  return new Date(utcSec * 1000)
-    .toLocaleTimeString("en-NZ", { timeZone: tz, hour: "numeric", hour12: true })
-    .replace(/\s/g, "")
-    .toLowerCase();
+  return clock(utcSec, tz);
 }
 
 /** Calendar day key in `tz`, for grouping hours by local day. */

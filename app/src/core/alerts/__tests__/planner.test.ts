@@ -25,7 +25,7 @@ describe("planAlerts", () => {
     const out = planAlerts(hours, on({ tempHighEnabled: true }), "Christchurch", TZ, NOW);
     expect(out).toHaveLength(2);
     expect(out[0].title).toBe("Warming up in Christchurch");
-    expect(out[0].body).toBe("Forecast above 25° from 10am today (27°).");
+    expect(out[0].body).toBe("Forecast above 25° from 10:00 today (27°).");
   });
 
   it("stays quiet when already beyond the limit at the first future hour", () => {
@@ -37,7 +37,7 @@ describe("planAlerts", () => {
     const hours = Array.from({ length: 24 }, (_, i) => hr(i, { uvIndex: i >= 10 && i < 15 ? (i === 10 ? 6 : 3) : 0 }));
     const out = planAlerts(hours, on({ uvEnabled: true }), "Christchurch", TZ, NOW);
     expect(out).toHaveLength(1);
-    expect(out[0].body).toBe("UV 3+ from 10am to 3pm, peaking at 6 High around 10am.");
+    expect(out[0].body).toBe("UV 3+ from 10:00 to 15:00, peaking at 6 High around 10:00.");
   });
 
   it("alerts ahead of rain with the lead time", () => {
@@ -46,7 +46,7 @@ describe("planAlerts", () => {
     const out = planAlerts(hours, on({ rainEnabled: true }), "Christchurch", TZ, NOW);
     expect(out).toHaveLength(1);
     expect(out[0].fireSec).toBe(T0 + 14 * 3600);
-    expect(out[0].body).toBe("Moderate rain from 3pm to 6pm today, up to 70% chance, about 3.6 mm.");
+    expect(out[0].body).toBe("Moderate rain from 15:00 to 18:00 today, up to 70% chance, about 3.6 mm.");
   });
 
   it("caps and sorts", () => {

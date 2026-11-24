@@ -5,6 +5,7 @@ import { SkiaGate } from "../chart/SkiaGate";
 import type { TideMiniProps } from "../chart/TideMiniInner";
 import { buildTideModel, cardEvents, layoutTideCards, tideScrollForNow, TIDE_HIGH_COLOR, TIDE_LOW_COLOR } from "../chart/tideModel";
 import type { HourlyHour } from "../core/payload";
+import { clock } from "../core/insights";
 import { KEYS, load, save } from "../data/storage";
 import { DARK_PALETTE, LIGHT_PALETTE } from "../chart/palette";
 import { getNextTides, tideHeight } from "../core/tides";
@@ -64,8 +65,7 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
 
   if (!port || !view) return null;   // inland: no tides panel
 
-  const fmt = (d: Date) =>
-    d.toLocaleTimeString("en-NZ", { timeZone: location.timezone, hour: "numeric", minute: "2-digit", hour12: true });
+  const fmt = (d: Date) => clock(d.getTime() / 1000, location.timezone);
 
   const hover = model && hoverX != null ? model.hover(hoverX) : null;
   let cursorY: number | null = null;
@@ -125,7 +125,7 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
           // Roomy: one row of full cards (highs and lows alternate). Tight (zoomed out): two rows of compact
           // cards, highs above lows, each as wide as the room between same-kind tides allows.
           const roomy = model.pph * 5 >= 100;
-          const fmtC = (d: Date) => fmt(d).replace(/\s?([ap])m$/i, (_m, c) => c.toLowerCase());
+          const fmtC = fmt;
           type Card = { key: string; left: number; w: number; top: number; h: number; high: boolean; compact: boolean; time: string; height: string; a11y: string };
           const placed: Card[] = [];
           const leads: { key: string; x: number; h: number; high: boolean }[] = [];

@@ -4,7 +4,7 @@
  * layout rules are unit-tested and the renderer stays a thin set of draw calls.
  */
 import {
-  dayBoundaries, dewComfort, dewPoint, glowStops, LEVEL_RANK, nowIndex, pressureTendencies, skyStops,
+  clock, dayBoundaries, dewComfort, dewPoint, glowStops, LEVEL_RANK, nowIndex, pressureTendencies, skyStops,
   tendencyRuns,
 } from "../core/insights";
 import type { HourlyHour } from "../core/payload";
@@ -96,7 +96,7 @@ export function buildChartModel(input: ChartInput): ChartModel {
     input, hours, tz, pph, W, H, dew, tMin, tMax, pMin, pMax, qMax,
     nowIdx: nowIndex(hours, nowSec),
     // Labels every 3 h need 10+ px/hour; zoomed out they thin to 6/12/24 h.
-    labelStride: [3, 6, 12].find((s) => pph * s >= 30) || 24,
+    labelStride: [3, 6, 12].find((s) => pph * s >= 36) || 24,
     // Wind arrows (~10 px wide) every 3 h, in 3 h steps when zoomed out.
     arrowEvery: Math.max(1, Math.ceil(18 / pph / 3)) * 3,
     spans: [],
@@ -303,7 +303,7 @@ export function timeLabels(m: ChartModel): { x: number; text: string }[] {
     if (!h.validTimeUtc) return;
     const hour = localHour(h.validTimeUtc, m.tz);
     if (hour % m.labelStride !== 0) return;
-    const text = hour === 0 ? "12am" : hour === 12 ? "12pm" : hour > 12 ? `${hour - 12}pm` : `${hour}am`;
+    const text = `${String(hour).padStart(2, "0")}:00`;
     out.push({ x: m.hourX(i), text });
   });
   return out;
@@ -399,9 +399,9 @@ export function tooltip(m: ChartModel, i: number): { time: string; rows: Tooltip
   const fmtR = (v: number | null | undefined, unit: string) => (v != null ? `${Math.round(v)}${unit}` : "—");
   const warn = warningAt(m, i);
   const time = h.validTimeUtc
-    ? new Date(h.validTimeUtc * 1000).toLocaleString("en-NZ", {
-        timeZone: m.tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true,
-      })
+    ? `${new Date(h.validTimeUtc * 1000).toLocaleDateString("en-NZ", {
+        timeZone: m.tz, weekday: "short", month: "short", day: "numeric",
+      })} ${clock(h.validTimeUtc, m.tz)}`
     : "";
   const rows: TooltipRow[] = [];
   if (warn) rows.push({ label: "Warning", value: warn.headline, warnLevel: warn.level });

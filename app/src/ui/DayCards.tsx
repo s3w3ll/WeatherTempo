@@ -2,13 +2,14 @@ import Feather from "@expo/vector-icons/Feather";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { fmtHourCompact, uvLabel } from "../core/display";
+import { clock } from "../core/insights";
 import { buildDayForecast, type DayForecast } from "../core/dayForecast";
 import type { WeatherPayload } from "../core/payload";
 import { useSettings } from "../settings";
 import { Card, Txt } from "./kit";
 
 const hm = (utc: number | null, tz: string) =>
-  utc ? new Date(utc * 1000).toLocaleTimeString("en-NZ", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true }).replace(/ (am|pm)$/i, "$1") : "—";
+  utc ? clock(utc, tz) : "—";
 const h = (utc: number | null, tz: string) => (utc ? fmtHourCompact(utc, tz) : "—");
 
 function Sep() {

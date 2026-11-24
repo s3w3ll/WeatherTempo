@@ -5,6 +5,7 @@
  * the same code serves iOS and web.
  */
 import type { Current, DailyDay, HourlyHour } from "./payload";
+import { clock } from "./insights";
 
 export const MOON_EMOJI: Record<string, string> = {
   NM: "🌑", WNM: "🌑", WXC: "🌒", FQ: "🌓", WXG: "🌔", FM: "🌕", WNG: "🌖", LQ: "🌗", WNC: "🌘",
@@ -33,19 +34,15 @@ export function degToCard(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-// ── Time formatting ─────────────────────────────────────────────────────────
-function fmt(utcSec: number | null | undefined, tz: string, opts: Intl.DateTimeFormatOptions): string {
-  if (!utcSec) return "—";
-  return new Date(utcSec * 1000).toLocaleTimeString("en-NZ", { timeZone: tz, ...opts });
-}
-/** "1:02 pm" */
+// ── Time formatting (24-hour clock throughout) ──────────────────────────────
+/** "13:02" */
 export const fmtShortTime = (utcSec: number | null | undefined, tz: string) =>
-  fmt(utcSec, tz, { hour: "numeric", minute: "2-digit", hour12: true });
-/** "1 pm" */
+  utcSec ? clock(utcSec, tz) : "—";
+/** "13:00" */
 export const fmtHourOnly = (utcSec: number | null | undefined, tz: string) =>
-  fmt(utcSec, tz, { hour: "numeric", hour12: true });
-/** "1pm" (no space) */
-export const fmtHourCompact = (utcSec: number, tz: string) => fmtHourOnly(utcSec, tz).replace(/ (am|pm)$/i, "$1");
+  utcSec ? clock(utcSec, tz) : "—";
+/** "13:00" (same as fmtHourOnly; kept for call sites that wanted the compact form) */
+export const fmtHourCompact = (utcSec: number, tz: string) => clock(utcSec, tz);
 
 /** "just now", "12 min ago", "3h ago". */
 export function fmtRelative(iso: string | undefined | null, nowMs: number): string {
@@ -142,7 +139,7 @@ export function uvLabel(raw: number | null | undefined): string {
   return `${idx} Extreme`;
 }
 
-/** Today's peak UV and the contiguous "10am–3pm" window of UV 3+ (null when none). */
+/** Today's peak UV and the contiguous "10:00–15:00" window of UV 3+ (null when none). */
 export function uvInfo(hourly: HourlyHour[], tz: string, nowSec: number) {
   const hours = todayHours(hourly, tz, nowSec);
   const peakUV = hours.length ? Math.max(...hours.map((h) => h.uvIndex ?? 0)) : null;
