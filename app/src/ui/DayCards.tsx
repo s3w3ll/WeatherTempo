@@ -1,5 +1,5 @@
 import Feather from "@expo/vector-icons/Feather";
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { fmtHourCompact, uvLabel } from "../core/display";
 import { clock } from "../core/insights";
@@ -96,12 +96,17 @@ function DayCard({ fc, tz }: { fc: DayForecast | null; tz: string }) {
   );
 }
 
-/** Tomorrow and the three days after, side by side (two by two on a phone). */
+/** Tomorrow and the three days after: four across when there's room, otherwise two by two. */
 export function DayCards({ data, tz, nowSec }: { data: WeatherPayload; tz: string; nowSec: number }) {
+  // Explicit cell widths: a percentage flexBasis in a wrapping row made iOS (Yoga) measure the cards at
+  // the narrow basis width, so their text wrapped into very tall cards and pushed the second row off.
+  const [w, setW] = useState(0);
+  const cols = w >= 4 * MIN_CELL + 3 * GAP ? 4 : 2;
+  const cellW = w > 0 ? Math.floor((w - GAP * (cols - 1)) / cols) : undefined;
   return (
-    <View style={styles.grid}>
+    <View style={styles.grid} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
       {[1, 2, 3, 4].map((i) => (
-        <View key={i} style={styles.cell}>
+        <View key={i} style={[styles.cell, cellW != null && { width: cellW }]}>
           <DayCard fc={buildDayForecast(i, data.hourly ?? [], data.daily ?? [], tz, nowSec)} tz={tz} />
         </View>
       ))}
@@ -109,10 +114,13 @@ export function DayCards({ data, tz, nowSec }: { data: WeatherPayload; tz: strin
   );
 }
 
+const MIN_CELL = 150;
+const GAP = 12;
+
 const styles = StyleSheet.create({
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  cell: { flexGrow: 1, flexBasis: "22%", minWidth: 150 },
-  card: { gap: 8, flex: 1, padding: 14 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP },
+  cell: { width: "47%" },
+  card: { gap: 8, flexGrow: 1, padding: 14 },
   day: { fontSize: 16, fontWeight: "700" },
   date: { fontSize: 12 },
   tempRow: { flexDirection: "row", gap: 14, flexWrap: "wrap" },
