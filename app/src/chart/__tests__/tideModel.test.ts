@@ -1,4 +1,4 @@
-import { buildChartModel, PAD } from "../model";
+import { buildChartModel, dayColumns as dayColumnsOf, dividerXs, PAD } from "../model";
 import { buildTideModel, cardEvents, layoutTideCards, tideScrollForNow, TIDE_PAD_V } from "../tideModel";
 import { generateSampleData } from "../../core/sample";
 import { getLocation } from "../../core/locations";
@@ -14,6 +14,7 @@ const tide = (days: number, vw = 900, withSky = true) =>
   buildTideModel("new-brighton", NOW, {
     t0Sec: T0, hours: hours.length, days, viewportWidth: vw, H,
     lat: withSky ? loc.lat : null, lon: withSky ? loc.lon : null,
+    hourTimes: hours.map((h) => h.validTimeUtc), tz: TZ,
   })!;
 
 describe("tide chart shares the weather chart's x-axis", () => {
@@ -84,6 +85,37 @@ describe("tide card selection", () => {
     const thin = cardEvents(m, NOW, 70);
     expect(thin.length).toBeLessThan(all.length);
     for (let i = 1; i < thin.length; i++) expect(thin[i].x - thin[i - 1].x).toBeGreaterThanOrEqual(70);
+  });
+});
+
+describe("tide chart day axis", () => {
+  it("has the same dividers and day columns as the weather chart", () => {
+    const w = buildChartModel({ hours, days: 5, viewportWidth: 900, lat: loc.lat, lon: loc.lon, tz: TZ, nowSec: NOW / 1000 });
+    const t = tide(5);
+    expect(t.dayCols.map((c) => [c.label, Math.round(c.x0), Math.round(c.x1)]))
+      .toEqual(dayColumnsOf(w).map((c) => [c.label, Math.round(c.x0), Math.round(c.x1)]));
+    expect(t.dividers.map(Math.round)).toEqual(dividerXs(w).map(Math.round));
+  });
+  it("names the days in long form when there is room, short when tight", () => {
+    expect(tide(1, 900).dayCols.some((c) => /day$/.test(c.label) && c.label.length > 3)).toBe(true);
+    expect(tide(5, 340).dayCols.every((c) => c.label.length === 3)).toBe(true);
+  });
+  it("has none without hour times", () => {
+    const bare = buildTideModel("new-brighton", NOW, { t0Sec: T0, hours: 48, days: 3, viewportWidth: 900, H })!;
+    expect(bare.dayCols).toEqual([]);
+    expect(bare.dividers).toEqual([]);
+  });
+});
+
+describe("tide card selection by type", () => {
+  it("returns only the requested kind, thinned independently", () => {
+    const m = tide(5, 340);
+    const highs = cardEvents(m, NOW, 0, "high");
+    const lows = cardEvents(m, NOW, 0, "low");
+    expect(highs.every((e) => e.type === "high")).toBe(true);
+    expect(lows.every((e) => e.type === "low")).toBe(true);
+    expect(highs.length).toBeGreaterThan(5);
+    expect(lows.length).toBeGreaterThan(5);
   });
 });
 

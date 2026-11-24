@@ -49,8 +49,9 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
   const model = useMemo(
     () => (port && width > 0 && t0 ? buildTideModel(port, minute * 60_000, {
       t0Sec: t0, hours: hourly.length, days, viewportWidth: width, H: CHART_H, lat: location.lat, lon: location.lon,
+      hourTimes: hourly.map((h) => h.validTimeUtc), tz: location.timezone,
     }) : null),
-    [port, t0, hourly.length, days, width, location.lat, location.lon, minute],
+    [port, hourly, days, width, location.lat, location.lon, location.timezone, minute],
   );
   // Opening, zoom or location change: put "now" about 30% in.
   useEffect(() => {
@@ -120,10 +121,47 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
         {view.events.length === 0 && <Txt tone="muted">No tide data available</Txt>}
         {model && (() => {
           const gap = 6;
+          const nowM = minute * 60_000;
+          // Roomy: one row of full cards (highs and lows alternate). Tight (zoomed out): two rows of compact
+          // cards, highs above lows, each as wide as the room between same-kind tides allows.
           const roomy = model.pph * 5 >= 100;
-          const cardW = roomy ? 92 : 64;
-          const shown = cardEvents(model, minute * 60_000, cardW + gap);
-          const lefts = layoutTideCards(shown.map((e) => e.x), model.W, cardW, gap);
+          const fmtC = (d: Date) => fmt(d).replace(/\s?([ap])m$/i, (_m, c) => c.toLowerCase());
+          type Card = { key: string; left: number; w: number; top: number; h: number; high: boolean; compact: boolean; time: string; height: string; a11y: string };
+          const placed: Card[] = [];
+          const leads: { key: string; x: number; h: number; high: boolean }[] = [];
+          let rowsH: number;
+          if (roomy) {
+            const cardW = 92;
+            const shown = cardEvents(model, nowM, cardW + gap);
+            const lefts = layoutTideCards(shown.map((e) => e.x), model.W, cardW, gap);
+            shown.forEach((ev, i) => {
+              const high = ev.type === "high";
+              placed.push({
+                key: String(ev.time.getTime()), left: lefts[i], w: cardW, top: LEAD, h: CARD_H, high, compact: false,
+                time: fmt(ev.time), height: `${ev.height.toFixed(1)} m`,
+                a11y: `${high ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`,
+              });
+              leads.push({ key: String(ev.time.getTime()), x: ev.x, h: LEAD, high });
+            });
+            rowsH = CARD_H + LEAD;
+          } else {
+            const cardW = Math.max(30, Math.min(64, Math.floor(model.pph * 12.2) - 3));
+            const rowH = 36;
+            (["high", "low"] as const).forEach((type, row) => {
+              const shown = cardEvents(model, nowM, cardW + 2, type);
+              const lefts = layoutTideCards(shown.map((e) => e.x), model.W, cardW, 2);
+              const top = LEAD + row * (rowH + 4);
+              shown.forEach((ev, i) => {
+                placed.push({
+                  key: String(ev.time.getTime()), left: lefts[i], w: cardW, top, h: rowH, high: type === "high", compact: true,
+                  time: fmtC(ev.time), height: ev.height.toFixed(1),
+                  a11y: `${type === "high" ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`,
+                });
+                leads.push({ key: String(ev.time.getTime()), x: ev.x, h: top, high: type === "high" });
+              });
+            });
+            rowsH = LEAD + 2 * rowH + 4;
+          }
           return (
             <ScrollView ref={scroller} horizontal showsHorizontalScrollIndicator={days < 5}>
               <View style={{ width: model.W }}>
@@ -145,7 +183,7 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
                       height={CHART_H}
                       props={{
                         model, curve: tokens.tideCurve, fillA: tokens.tideFillA, fillB: tokens.tideFillB, fillC: tokens.tideFillC,
-                        bg: tokens.tideCanvas, skyColors: sky, cursorX: hover ? hoverX : null, cursorY,
+                        bg: tokens.tideCanvas, skyColors: sky, dayDiv: P.dayDiv, cursorX: hover ? hoverX : null, cursorY,
                       }}
                     />
                   </Pressable>
@@ -167,22 +205,42 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
                   )}
                 </View>
 
-                <View style={{ width: model.W, height: CARD_H + LEAD }}>
-                  {shown.map((ev, i) => {
-                    const high = ev.type === "high";
-                    return (
-                      <React.Fragment key={ev.time.getTime()}>
-                        <View pointerEvents="none"
-                          style={[styles.lead, { left: Math.round(ev.x), backgroundColor: high ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }]} />
-                        <View style={[styles.event, { left: lefts[i], width: cardW, top: LEAD, backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
-                          accessible accessibilityLabel={`${high ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`}>
-                          <Txt style={styles.type} numberOfLines={1}>{high ? "🌊 High" : "🏖️ Low"}</Txt>
-                          <Txt tone="strong" style={styles.time} numberOfLines={1}>{fmt(ev.time)}</Txt>
-                          <Txt tone="muted" style={styles.height}>{ev.height.toFixed(1)} m</Txt>
-                        </View>
-                      </React.Fragment>
-                    );
-                  })}
+                {/* Day axis: a band of day names under the curve, as on the weather chart. */}
+                <View style={[styles.dayAxis, { width: model.W, backgroundColor: P.dayAxisBg, borderTopColor: P.dayDiv }]}>
+                  {model.dayCols.map((c) => (
+                    <React.Fragment key={`dc${c.x0}`}>
+                      <Txt numberOfLines={1} style={[styles.dayLabel, { left: c.x0, width: c.x1 - c.x0, color: P.text }]}>{c.label}</Txt>
+                      {c.divider && <View style={[styles.dayTick, { left: c.x0, backgroundColor: P.dayDiv }]} />}
+                    </React.Fragment>
+                  ))}
+                </View>
+
+                <View style={{ width: model.W, height: rowsH }}>
+                  {leads.map((l) => (
+                    <View key={`ld${l.key}`} pointerEvents="none"
+                      style={[styles.lead, { left: Math.round(l.x), height: l.h, backgroundColor: l.high ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }]} />
+                  ))}
+                  {placed.map((c) => (
+                    <View key={c.key}
+                      style={[styles.event, c.compact && styles.eventCompact, {
+                        left: c.left, width: c.w, top: c.top, height: c.h, backgroundColor: tokens.stat,
+                        borderColor: tokens.cardBorder, borderTopColor: c.high ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR, borderTopWidth: c.compact ? 2 : StyleSheet.hairlineWidth,
+                      }]}
+                      accessible accessibilityLabel={c.a11y}>
+                      {c.compact ? (
+                        <>
+                          <Txt tone="strong" style={styles.timeC} numberOfLines={1}>{c.time}</Txt>
+                          <Txt tone="muted" style={styles.heightC} numberOfLines={1}>{c.height}</Txt>
+                        </>
+                      ) : (
+                        <>
+                          <Txt style={styles.type} numberOfLines={1}>{c.high ? "🌊 High" : "🏖️ Low"}</Txt>
+                          <Txt tone="strong" style={styles.time} numberOfLines={1}>{c.time}</Txt>
+                          <Txt tone="muted" style={styles.height}>{c.height}</Txt>
+                        </>
+                      )}
+                    </View>
+                  ))}
                 </View>
               </View>
             </ScrollView>
@@ -216,6 +274,12 @@ const styles = StyleSheet.create({
   tipRow: { flexDirection: "row", justifyContent: "space-between" },
   tipLabel: { fontSize: 12 },
   tipVal: { fontSize: 12, fontWeight: "600" },
+  dayAxis: { height: 16, borderTopWidth: StyleSheet.hairlineWidth, position: "relative" },
+  dayLabel: { position: "absolute", top: 2, textAlign: "center", fontSize: 10, fontWeight: "700" },
+  dayTick: { position: "absolute", top: 0, bottom: 0, width: 1 },
+  eventCompact: { paddingHorizontal: 1, borderRadius: 6, gap: 0 },
+  timeC: { fontSize: 10, fontWeight: "600" },
+  heightC: { fontSize: 10 },
   lead: { position: "absolute", top: 0, width: 2, height: LEAD, marginLeft: -1, borderRadius: 1 },
   event: {
     position: "absolute", height: CARD_H, alignItems: "center", justifyContent: "center", gap: 1,

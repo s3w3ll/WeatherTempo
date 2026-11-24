@@ -14,12 +14,14 @@ export interface TideMiniProps {
   fillA: string; fillB: string; fillC: string; bg: string;
   /** Colour for each sky phase, drawn behind the curve like the weather chart's background. */
   skyColors: { day: string; twilight: string; night: string };
+  /** Colour of the day dividers (local midnights), as on the weather chart. */
+  dayDiv: string;
   /** x of the hover cursor in px, or null. */
   cursorX: number | null;
   cursorY: number | null;
 }
 
-export default function TideMiniInner({ model: m, curve, fillA, fillB, fillC, bg, skyColors, cursorX, cursorY }: TideMiniProps) {
+export default function TideMiniInner({ model: m, curve, fillA, fillB, fillC, bg, skyColors, dayDiv, cursorX, cursorY }: TideMiniProps) {
   const { W, H } = m;
   return (
     // Skia's web Canvas hands `style` straight to the DOM: a plain object, not a style array.
@@ -31,6 +33,9 @@ export default function TideMiniInner({ model: m, curve, fillA, fillB, fillC, bg
             colors={m.sky.map((s) => skyColors[s.phase])} positions={m.sky.map((s) => s.pos)} />
         </Rect>
       )}
+      {m.dividers.map((x) => (
+        <Line key={`dd${x}`} p1={vec(x, 0)} p2={vec(x, H)} color={dayDiv} strokeWidth={1} />
+      ))}
       <Path path={areaD(m.pts, H)} color="transparent">
         <LinearGradient start={vec(0, TIDE_PAD_V)} end={vec(0, H)} colors={[fillA, fillB, fillC]} positions={[0, 0.6, 1]} />
       </Path>

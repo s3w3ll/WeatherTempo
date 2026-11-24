@@ -3,7 +3,7 @@
  * first hour, pixels per hour and padding), so with both set to the same zoom
  * their x-axes line up exactly. Pure, like model.ts.
  */
-import { skyStops } from "../core/insights";
+import { dayBoundaries, skyStops } from "../core/insights";
 import { findTideEvents, sampleTide, tideHeight } from "../core/tides";
 import type { SkyPhase, TideEvent } from "../core/types";
 import type { Pt } from "./curve";
@@ -24,7 +24,12 @@ export interface TideChartInput {
   H: number;
   lat?: number | null;
   lon?: number | null;
+  /** The weather chart's hour timestamps and time zone, for day dividers and labels identical to its own. */
+  hourTimes?: number[];
+  tz?: string;
 }
+
+export interface TideDayColumn { x0: number; x1: number; label: string; divider: boolean }
 
 export interface TideChartModel {
   W: number; H: number;
@@ -37,6 +42,9 @@ export interface TideChartModel {
   hMin: number; hMax: number;
   /** Day / twilight / night bands across the chart (position 0-1); empty without coordinates. */
   sky: { pos: number; phase: SkyPhase }[];
+  /** x of each local midnight, and one labelled column per local day (as on the weather chart). */
+  dividers: number[];
+  dayCols: TideDayColumn[];
   xOf(ms: number): number;
   timeAt(x: number): number;
   hover(x: number): TideHover;
@@ -71,10 +79,30 @@ export function buildTideModel(portId: string, nowMs: number, o: TideChartInput)
   const sky = (skyStops([{ validTimeUtc: o.t0Sec }, { validTimeUtc: endMs / 1000 - 3600 }], o.lat, o.lon) ?? [])
     .map((s) => ({ pos: clamp(xOf(s.t * 1000) / W, 0, 1), phase: s.phase }));
 
+  // Day dividers and day columns, computed exactly as the weather chart does from its hours.
+  const hx = (i: number) => PAD.left + i * pph + pph / 2;
+  const times = o.hourTimes ?? [];
+  const hourObjs = times.map((t) => ({ validTimeUtc: t }));
+  const tz = o.tz ?? "Pacific/Auckland";
+  const bounds = times.length ? dayBoundaries(hourObjs, tz) : [];
+  const dividers = bounds.map((i) => hx(i) - pph / 2);
+  const dayCols: TideDayColumn[] = [];
+  if (times.length) {
+    const edges = [0, ...bounds, times.length];
+    for (let b = 0; b < edges.length - 1; b++) {
+      const x0 = hx(edges[b]) - pph / 2;
+      const x1 = hx(edges[b + 1] - 1) + pph / 2;
+      const w = x1 - x0;
+      if (w < 24) continue;   // a sliver of a day at either end: no room for a name
+      const label = new Date(times[edges[b]] * 1000).toLocaleDateString("en-NZ", { timeZone: tz, weekday: w > 100 ? "long" : "short" });
+      dayCols.push({ x0, x1, label, divider: b > 0 });
+    }
+  }
+
   const timeAt = (x: number) => clamp(startMs + ((x - PAD.left - pph / 2) / pph) * 3_600_000, startMs, endMs);
   const nx = xOf(nowMs);
   return {
-    W, H: o.H, pph, startMs, endMs, hMin, hMax, sky, xOf, timeAt,
+    W, H: o.H, pph, startMs, endMs, hMin, hMax, sky, dividers, dayCols, xOf, timeAt,
     pts: curve.map((p) => ({ x: xOf(p.time.getTime()), y: yOf(p.height) })),
     events: raw.map((e) => ({ ...e, x: xOf(e.time.getTime()), y: yOf(e.height) })),
     now: nowMs >= startMs && nowMs <= endMs ? { x: nx, y: yOf(tideHeight(portId, nowMs)!) } : null,
@@ -102,10 +130,12 @@ export function tideScrollForNow(m: TideChartModel, nowMs: number, viewport: num
  * The events that get a card: from `fromMs` on, thinned so neighbours are at
  * least `minGap` px apart (zoomed out, every card would overlap), in order.
  */
-export function cardEvents(m: TideChartModel, fromMs: number, minGap: number): (TideEvent & { x: number; y: number })[] {
+export function cardEvents(
+  m: TideChartModel, fromMs: number, minGap: number, type?: "high" | "low",
+): (TideEvent & { x: number; y: number })[] {
   const out: (TideEvent & { x: number; y: number })[] = [];
   for (const e of m.events) {
-    if (e.time.getTime() < fromMs) continue;
+    if (e.time.getTime() < fromMs || (type && e.type !== type)) continue;
     if (out.length && e.x - out[out.length - 1].x < minGap) continue;
     out.push(e);
   }
