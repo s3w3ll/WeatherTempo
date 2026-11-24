@@ -1,5 +1,5 @@
 import Feather from "@expo/vector-icons/Feather";
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import {
   currentCloud, degToCard, fmtHourOnly, fmtShortTime, hourlyStrip, iconFor, isDaytime, MOON_EMOJI,
@@ -11,10 +11,13 @@ import { Card, Txt } from "./kit";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
 
-function Stat({ icon, value, label }: { icon: FeatherName; value: string; label: string }) {
+/** Grid width at which all eight stats fit in one row (about 100px each plus gaps). */
+const ONE_ROW_MIN = 820;
+
+function Stat({ icon, value, label, oneRow }: { icon: FeatherName; value: string; label: string; oneRow?: boolean }) {
   const { tokens } = useSettings();
   return (
-    <View style={[styles.stat, { backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
+    <View style={[styles.stat, oneRow && styles.statOneRow, { backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
       accessible accessibilityLabel={`${label}: ${value}`}>
       <Feather name={icon} size={16} color={tokens.textMuted} />
       <Txt tone="strong" style={styles.statValue}>{value}</Txt>
@@ -37,6 +40,9 @@ export function ConditionsCard({ data, tz, nowMs }: { data: WeatherPayload; tz: 
   const gust = c.windGust ?? agg.peakGust;
   const observed = observedLabel(c.observedUtc, data.meta?.sourceStatus?.currentSource, tz, nowMs);
   const deg = (v: number | null | undefined) => (v != null ? `${Math.round(v)}°` : "—°");
+  // Wide enough for all eight stats side by side? Otherwise they wrap as before.
+  const [gridW, setGridW] = useState(0);
+  const oneRow = gridW >= ONE_ROW_MIN;
 
   return (
     <Card style={styles.card} accessibilityLabel="Current conditions">
@@ -83,18 +89,18 @@ export function ConditionsCard({ data, tz, nowMs }: { data: WeatherPayload; tz: 
       </ScrollView>
 
       {/* Row 2: stats */}
-      <View style={styles.grid}>
-        <Stat icon="droplet" value={c.humidity != null ? `${c.humidity}%` : "—"} label="Humidity" />
-        <Stat icon="wind" value={c.windSpeed != null ? `${c.windSpeed} km/h` : "—"}
+      <View style={styles.grid} onLayout={(e) => setGridW(e.nativeEvent.layout.width)}>
+        <Stat oneRow={oneRow} icon="droplet" value={c.humidity != null ? `${c.humidity}%` : "—"} label="Humidity" />
+        <Stat oneRow={oneRow} icon="wind" value={c.windSpeed != null ? `${c.windSpeed} km/h` : "—"}
           label={c.windCardinal || (c.windDirection != null ? degToCard(c.windDirection) : "Wind")} />
-        <Stat icon="navigation" value={gust != null ? `${Math.round(gust)} km/h` : "—"} label="Gust" />
-        <Stat icon="activity" value={c.pressure != null ? `${Math.round(c.pressure)} hPa` : "—"}
+        <Stat oneRow={oneRow} icon="navigation" value={gust != null ? `${Math.round(gust)} km/h` : "—"} label="Gust" />
+        <Stat oneRow={oneRow} icon="activity" value={c.pressure != null ? `${Math.round(c.pressure)} hPa` : "—"}
           label={trend === "rising" ? "↑ Rising" : trend === "falling" ? "↓ Falling" : trend === "steady" ? "→ Steady" : "Pressure"} />
-        <Stat icon="thermometer" value={c.dewPoint != null ? `${Math.round(c.dewPoint)}°` : "—"} label="Dew Point" />
-        <Stat icon="cloud" value={cloud != null ? `${cloud}%` : "—"} label="Cloud" />
-        <Stat icon="cloud-rain" value={agg.rainMm != null ? `${agg.rainMm} mm` : "—"}
+        <Stat oneRow={oneRow} icon="thermometer" value={c.dewPoint != null ? `${Math.round(c.dewPoint)}°` : "—"} label="Dew Point" />
+        <Stat oneRow={oneRow} icon="cloud" value={cloud != null ? `${cloud}%` : "—"} label="Cloud" />
+        <Stat oneRow={oneRow} icon="cloud-rain" value={agg.rainMm != null ? `${agg.rainMm} mm` : "—"}
           label={agg.peakChance != null ? `Peak ${agg.peakChance}%` : "Rain today"} />
-        <Stat icon="sun" value={c.uvIndex != null ? `Now ${uvLabel(c.uvIndex)}` : "—"}
+        <Stat oneRow={oneRow} icon="sun" value={c.uvIndex != null ? `Now ${uvLabel(c.uvIndex)}` : "—"}
           label={uv.peakUV != null ? `Peak ${uvLabel(uv.peakUV)}${uv.uvWindow ? ` · ${uv.uvWindow}` : ""}` : "UV"} />
       </View>
 
@@ -153,6 +159,7 @@ const styles = StyleSheet.create({
   stat: {
     flexGrow: 1, flexBasis: "22%", minWidth: 120, gap: 3, padding: 10, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth,
   },
+  statOneRow: { flexBasis: 0, minWidth: 0 },
   statValue: { fontSize: 16, fontWeight: "600" },
   statLabel: { fontSize: 12 },
   astro: { flexDirection: "row", justifyContent: "space-around", flexWrap: "wrap", gap: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
