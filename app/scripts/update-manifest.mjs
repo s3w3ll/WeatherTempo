@@ -3,11 +3,12 @@
 //
 //   node scripts/update-manifest.mjs <export-dir>
 //
-// The folder is then published at https://<site>/updates/ios/ by the Pages workflow;
-// app.json `updates.url` points the app at <that folder>/manifest.json. GitHub Pages
-// can't vary a response on request headers, so this serves one static manifest. That's
-// enough: the app only launches an update whose runtimeVersion matches its own build,
-// and URLs in the manifest are relative to it.
+// The folder is then published at https://<site>/updates/ios/ by the Pages workflow.
+// The app doesn't read it from Pages directly: its updater insists on an
+// `expo-protocol-version` response header, which Pages can't send. app.json `updates.url`
+// points at the Worker's /updates/ios route instead, which relays this manifest with that
+// header, makes the (relative) asset URLs absolute so files still come from Pages, and
+// answers "no update" to a phone on a different runtimeVersion.
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

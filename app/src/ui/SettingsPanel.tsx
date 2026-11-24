@@ -15,12 +15,14 @@ const CHOICES: { id: ThemeChoice; label: string }[] = [
 export function SettingsPanel({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { tokens, themeChoice, setThemeChoice, location, setLocationId } = useSettings();
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [updErr, setUpdErr] = useState("");
   const [upd, setUpd] = useState<"idle" | "checking" | "ready" | "none" | "error">("idle");
   const updText = { idle: "Check for update", checking: "Checking…", ready: "Update ready: tap to restart", none: "Up to date", error: "Couldn't check" }[upd];
   const onUpdate = () => {
     if (upd === "ready") { applyNow(); return; }
     setUpd("checking");
-    checkAndFetch().then((r) => setUpd(r ? "ready" : "none")).catch(() => setUpd("error"));
+    checkAndFetch().then((r) => setUpd(r ? "ready" : "none"))
+      .catch((e: unknown) => { setUpdErr(e instanceof Error ? e.message : String(e)); setUpd("error"); });
   };
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -63,6 +65,7 @@ export function SettingsPanel({ visible, onClose }: { visible: boolean; onClose:
               <View style={styles.grow}>
                 <Txt style={styles.locText}>{otaEnabled ? updText : "Updates"}</Txt>
                 <Txt tone="muted" style={styles.hint}>{runningLabel()}</Txt>
+                {upd === "error" && updErr ? <Txt tone="muted" style={styles.hint} numberOfLines={3}>{updErr}</Txt> : null}
               </View>
               {otaEnabled && <Feather name={upd === "ready" ? "refresh-cw" : "download-cloud"} size={18} color={tokens.textMuted} />}
             </Pressable>

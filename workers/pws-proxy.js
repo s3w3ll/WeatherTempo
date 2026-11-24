@@ -311,6 +311,38 @@ async function handleWarnings(loc, cors) {
     200, { "Cache-Control": "public, max-age=60" });
 }
 
+// ── Expo Updates manifest (over-the-air JS for the iOS app) ──────────────────
+// The Pages workflow publishes the update (bundle, assets, manifest.json) to GitHub Pages, but
+// the app's updater only accepts a manifest whose response carries an `expo-protocol-version`
+// header, which Pages can't send. So the app asks here; this relays the manifest with the
+// header, points its relative asset URLs back at Pages (the files themselves come straight
+// from there), and says "no update" to a phone whose runtime doesn't match.
+const UPDATE_MANIFEST_URL = "https://weathertempo.forgesync.co.nz/updates/ios/manifest.json";
+
+async function handleUpdateManifest(request) {
+  const headers = {
+    "expo-protocol-version": "1",
+    "expo-sfv-version": "0",
+    // Per-runtime answers from one URL: never let a cache hand one phone another's reply.
+    "Cache-Control": NO_STORE,
+  };
+  const res = await fetch(UPDATE_MANIFEST_URL, { cf: { cacheTtl: 30 } });
+  if (res.status === 404) return new Response(null, { status: 204, headers });   // nothing published
+  if (!res.ok) return new Response(`Upstream ${res.status}`, { status: 502, headers });
+
+  const manifest = await res.json();
+  const wanted = request.headers.get("expo-runtime-version");
+  if (wanted && wanted !== manifest.runtimeVersion) return new Response(null, { status: 204, headers });
+
+  const abs = (u) => new URL(u, UPDATE_MANIFEST_URL).toString();
+  manifest.launchAsset.url = abs(manifest.launchAsset.url);
+  for (const a of manifest.assets ?? []) a.url = abs(a.url);
+  return new Response(JSON.stringify(manifest), {
+    status: 200,
+    headers: { ...headers, "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
 // ── Worker entry ──────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -326,6 +358,7 @@ export default {
       return new Response("Method not allowed", { status: 405, headers: cors });
 
     const reqUrl     = new URL(request.url);
+    if (reqUrl.pathname === "/updates/ios") return handleUpdateManifest(request);
     const locationId = reqUrl.searchParams.get("location") || "christchurch";
     const loc        = LOCATIONS[locationId];
 

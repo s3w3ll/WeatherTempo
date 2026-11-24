@@ -65,7 +65,10 @@ are inputs on a manual run if that changes.
 
 The app uses `expo-updates`, self-hosted on GitHub Pages: the Pages workflow
 exports the iOS JS bundle and writes `/updates/ios/manifest.json`
-(`scripts/update-manifest.mjs`). The app checks it at launch and whenever it
+(`scripts/update-manifest.mjs`). The app reads it through the Cloudflare
+Worker (`/updates/ios`), because the updater requires an `expo-protocol-version`
+response header that GitHub Pages can't send; the Worker adds it and points the
+asset URLs back at Pages. The app checks at launch and whenever it
 returns to the foreground (at most every 30 min), downloads quietly, and
 switches to the new code the next time it's opened. Settings → App shows
 which code is running and has a "Check for update" button.
@@ -77,7 +80,7 @@ with native code, changing a config plugin or native setting in `app.json`, or
 editing the widget (`targets/`). `runtimeVersion` in `app.json` is the
 contract between JS and the ipa:
 
-1. Bump `expo.runtimeVersion` (e.g. `"1"` → `"2"`).
+1. Bump `expo.runtimeVersion` (e.g. `"2"` → `"3"`).
 2. `npm run native:record` and commit `native-signature.json` with it.
 3. Install the new ipa. Phones on the old ipa just stop taking updates.
 
