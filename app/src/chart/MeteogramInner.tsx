@@ -62,6 +62,9 @@ export default function MeteogramInner(props: MeteogramProps) {
   const scrollX = useRef(0);
   const [viewport, setViewport] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
+  // Where the finger/pointer is vertically (canvas px) and how tall the tooltip is, so it can follow.
+  const [pointerY, setPointerY] = useState(0);
+  const [tipH, setTipH] = useState(0);
 
   // Opening, or a new location: put "now" about 30% in.
   useEffect(() => {
@@ -106,7 +109,10 @@ export default function MeteogramInner(props: MeteogramProps) {
   const pick = useCallback((x: number) => model.hourAt(x), [model]);
   const webHover = Platform.OS === "web"
     ? {
-        onPointerMove: (e: any) => setSelected(pick(e.nativeEvent.offsetX ?? e.nativeEvent.locationX ?? 0)),
+        onPointerMove: (e: any) => {
+          setSelected(pick(e.nativeEvent.offsetX ?? e.nativeEvent.locationX ?? 0));
+          setPointerY(e.nativeEvent.offsetY ?? e.nativeEvent.locationY ?? 0);
+        },
         onPointerLeave: () => setSelected(null),
       }
     : {};
@@ -116,13 +122,22 @@ export default function MeteogramInner(props: MeteogramProps) {
   const cx = selected != null ? model.hourX(selected) - scrollX.current : 0;
   const flip = cx - TIP_W - 12 < 0;
   const left = Math.min(Math.max(0, flip ? cx + 16 : cx - TIP_W - 12), Math.max(0, viewport - TIP_W));
+  // The tooltip grows out of the touched point: centred on it, kept inside the chart.
+  const top = Math.min(Math.max(0, pointerY - tipH / 2), Math.max(0, model.H - tipH));
+  // Touch: moving a finger up and down on an hour slides the tooltip with it.
+  const touch = (e: any) => {
+    const n = e.nativeEvent;
+    if (n?.locationY != null) setPointerY(n.locationY);
+    if (n?.locationX != null) setSelected(pick(n.locationX));
+  };
 
   return (
     <View onLayout={(e: LayoutChangeEvent) => setViewport(e.nativeEvent.layout.width)}>
       <ScrollView ref={scroller} horizontal showsHorizontalScrollIndicator onScroll={onScroll} scrollEventThrottle={32}>
-        <View>
+        <View onTouchStart={Platform.OS === "web" ? undefined : touch} onTouchMove={Platform.OS === "web" ? undefined : touch}>
           <Pressable
             onPress={(e) => {
+              setPointerY(e.nativeEvent.locationY);
               const i = pick(e.nativeEvent.locationX);
               setSelected((s) => (s === i ? null : i));   // tap again to dismiss
             }}
@@ -137,8 +152,8 @@ export default function MeteogramInner(props: MeteogramProps) {
       </ScrollView>
 
       {tip && selected != null && (
-        <View pointerEvents="none"
-          style={[styles.tip, { left, width: TIP_W, backgroundColor: props.cardColor, borderColor: props.borderColor }]}>
+        <View pointerEvents="none" onLayout={(e: LayoutChangeEvent) => setTipH(e.nativeEvent.layout.height)}
+          style={[styles.tip, { left, top, width: TIP_W, backgroundColor: props.cardColor, borderColor: props.borderColor }]}>
           <Txt style={[styles.tipTime, { color: props.textColor }]}>{tip.time}</Txt>
           {tip.rows.map((r) => (
             <View key={r.label} style={styles.tipRow}>
@@ -157,7 +172,7 @@ export default function MeteogramInner(props: MeteogramProps) {
 
 const styles = StyleSheet.create({
   tip: {
-    position: "absolute", top: 20, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, gap: 3,
+    position: "absolute", borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, gap: 3,
     shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
   },
   tipTime: { fontSize: 12, fontWeight: "700", marginBottom: 2 },

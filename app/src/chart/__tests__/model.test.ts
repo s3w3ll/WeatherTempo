@@ -236,17 +236,18 @@ describe("tooltip", () => {
     expect(tip.time).toMatch(/Tue/);
     expect(tip.rows[0]).toMatchObject({ label: "Warning", value: "Heavy rain", warnLevel: "orange" });
     const get = (l: string) => tip.rows.find((r) => r.label === l)!.value;
-    expect(get("Temp")).toBe(`${Math.round(hours[13].temperature!)}°`);
+    expect(get("Temp")).toMatch(new RegExp(`^${Math.round(hours[13].temperature!)}°`));
     expect(get("Pressure")).toMatch(/hPa$/);
-    expect(get("Dew point")).toMatch(/°/);
+    expect(get("Temp")).toMatch(/^-?\d+° · feels -?\d+°$/);
+    expect(get("Wind")).toMatch(/km\/h .*· gusts \d/);
+    expect(tip.rows.some((r) => r.label === "Dew point" || r.label === "Gusts" || r.label === "Feels like")).toBe(false);
     expect(get("UV index")).toBe(String(Math.round(hours[13].uvIndex!)));   // whole numbers, not 8.35
   });
   it("uses dashes for missing values", () => {
     const sparse = hours.map((h) => ({ ...h, windGust: null, uvIndex: null, relativeHumidity: null }));
     const tip = tooltip(buildChartModel(base({ hours: sparse })), 0);
-    expect(tip.rows.find((r) => r.label === "Gusts")!.value).toBe("—");
+    expect(tip.rows.find((r) => r.label === "Wind")!.value).not.toMatch(/gusts/);
     expect(tip.rows.find((r) => r.label === "UV index")!.value).toBe("—");
-    expect(tip.rows.find((r) => r.label === "Dew point")!.value).toBe("—");
   });
 });
 

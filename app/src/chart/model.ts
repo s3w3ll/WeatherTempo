@@ -397,7 +397,6 @@ export function tooltip(m: ChartModel, i: number): { time: string; rows: Tooltip
   const h = m.hours[i];
   const fmt = (v: number | null | undefined, unit: string) => (v != null ? `${v}${unit}` : "—");
   const fmtR = (v: number | null | undefined, unit: string) => (v != null ? `${Math.round(v)}${unit}` : "—");
-  const dew = m.dew[i];
   const warn = warningAt(m, i);
   const time = h.validTimeUtc
     ? new Date(h.validTimeUtc * 1000).toLocaleString("en-NZ", {
@@ -406,16 +405,20 @@ export function tooltip(m: ChartModel, i: number): { time: string; rows: Tooltip
     : "";
   const rows: TooltipRow[] = [];
   if (warn) rows.push({ label: "Warning", value: warn.headline, warnLevel: warn.level });
+  // Related pairs share a row to keep the tooltip short.
+  const feels = h.temperatureFeelsLike != null ? ` · feels ${Math.round(h.temperatureFeelsLike)}°` : "";
+  const wind = h.windSpeed != null
+    ? `${h.windSpeed} km/h ${h.windDirectionCardinal || ""}`.trim() + (h.windGust != null ? ` · gusts ${h.windGust}` : "")
+    : (h.windGust != null ? `gusts ${h.windGust} km/h` : "—");
+  const rain = h.precipChance != null
+    ? `${h.precipChance}%` + ((h.qpf ?? 0) > 0 ? ` · ${h.qpf} mm` : "")
+    : ((h.qpf ?? 0) > 0 ? `${h.qpf} mm` : "—");
   rows.push(
-    { label: "Temp", value: fmtR(h.temperature, "°") },
-    { label: "Feels like", value: fmtR(h.temperatureFeelsLike, "°") },
+    { label: "Temp", value: h.temperature != null ? `${Math.round(h.temperature)}°${feels}` : "—" },
     { label: "Condition", value: h.wxPhraseMedium || "—" },
     { label: "Humidity", value: fmt(h.relativeHumidity, "%") },
-    { label: "Dew point", value: dew != null ? `${Math.round(dew)}° ${dewComfort(dew)}` : "—" },
-    { label: "Wind", value: h.windSpeed != null ? `${h.windSpeed} km/h ${h.windDirectionCardinal || ""}`.trim() : "—" },
-    { label: "Gusts", value: h.windGust != null ? `${h.windGust} km/h` : "—" },
-    { label: "Rain chance", value: fmt(h.precipChance, "%") },
-    { label: "Precipitation", value: (h.qpf ?? 0) > 0 ? `${h.qpf} mm` : "—" },
+    { label: "Wind", value: wind },
+    { label: "Rain", value: rain },
     { label: "Pressure", value: fmtR(h.pressureMeanSeaLevel, " hPa") },
     { label: "UV index", value: fmtR(h.uvIndex, "") },
     { label: "Cloud cover", value: fmt(h.cloudCover, "%") },
