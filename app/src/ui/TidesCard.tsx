@@ -157,7 +157,7 @@ export function TidesCard({ location, nowMs, hourly }: { location: Location; now
               shown.forEach((ev, i) => {
                 placed.push({
                   key: String(ev.time.getTime()), left: lefts[i], w: cardW, top, h: rowH, high: type === "high", compact: true,
-                  time: fmtC(ev.time), height: ev.height.toFixed(1),
+                  time: fmtC(ev.time), height: `${ev.height.toFixed(1)}m`,
                   a11y: `${type === "high" ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`,
                 });
                 leads.push({ key: String(ev.time.getTime()), x: ev.x, h: top, high: type === "high" });
