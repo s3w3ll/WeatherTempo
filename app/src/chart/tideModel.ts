@@ -15,11 +15,12 @@ export const TIDE_LOW_COLOR = "#3ee5ff";
 
 export type RGB = [number, number, number];
 const lighten = (c: RGB, f: number): RGB => c.map((v) => Math.round(v + (255 - v) * f)) as RGB;
-const LIGHTEN = 0.2;   // the base colours below, all lightened 20% toward white
+const LIGHTEN = 0.2;       // night: base colours lightened 20% toward white
+const DAY_LIGHTEN = 0.4;   // day: lightened further, 40%
 /** Daylight and night shading: lightest at the edges of each period, a touch darker at its midpoint. */
 export const SHADE = {
-  dayLight: lighten([0xff, 0xde, 0xa3], LIGHTEN),     // base #ffdea3 (sunrise / sunset)
-  dayDark: lighten([0xe0, 0xc3, 0x8f], LIGHTEN),      // base #e0c38f, slightly darker at solar noon
+  dayLight: lighten([0xff, 0xde, 0xa3], DAY_LIGHTEN),     // base #ffdea3 (sunrise / sunset)
+  dayDark: lighten([0xe0, 0xc3, 0x8f], DAY_LIGHTEN),      // base #e0c38f, slightly darker at solar noon
   nightLight: lighten([0xd5, 0xdb, 0xe5], LIGHTEN),   // base #d5dbe5 (dusk / dawn)
   nightDark: lighten([0xbb, 0xc1, 0xca], LIGHTEN),    // base #bbc1ca, slightly darker at the dead of night
 };
