@@ -14,12 +14,14 @@ export const TIDE_HIGH_COLOR = "#ffa820";
 export const TIDE_LOW_COLOR = "#3ee5ff";
 
 export type RGB = [number, number, number];
+const lighten = (c: RGB, f: number): RGB => c.map((v) => Math.round(v + (255 - v) * f)) as RGB;
+const LIGHTEN = 0.2;   // the base colours below, all lightened 20% toward white
 /** Daylight and night shading: lightest at the edges of each period, a touch darker at its midpoint. */
 export const SHADE = {
-  dayLight: [0xff, 0xde, 0xa3] as RGB,     // #ffdea3 (sunrise / sunset)
-  dayDark: [0xe0, 0xc3, 0x8f] as RGB,      // slightly darker at solar noon
-  nightLight: [0xd5, 0xdb, 0xe5] as RGB,   // #d5dbe5 (dusk / dawn)
-  nightDark: [0xbb, 0xc1, 0xca] as RGB,    // slightly darker at the dead of night
+  dayLight: lighten([0xff, 0xde, 0xa3], LIGHTEN),     // base #ffdea3 (sunrise / sunset)
+  dayDark: lighten([0xe0, 0xc3, 0x8f], LIGHTEN),      // base #e0c38f, slightly darker at solar noon
+  nightLight: lighten([0xd5, 0xdb, 0xe5], LIGHTEN),   // base #d5dbe5 (dusk / dawn)
+  nightDark: lighten([0xbb, 0xc1, 0xca], LIGHTEN),    // base #bbc1ca, slightly darker at the dead of night
 };
 const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)) as RGB;
 const TWILIGHT_DEG = 6;   // civil twilight: the band that blends night into day
