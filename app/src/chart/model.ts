@@ -105,7 +105,7 @@ export function buildChartModel(input: ChartInput): ChartModel {
     pressY: (p) => ZONE.tempBot - ((p - pMin) / (pMax - pMin)) * span,
     uvY: (uv) => ZONE.tempBot - (clamp(uv, 0, 12) / 12) * span * 0.4,   // own 0–12 scale, lower 40%
     timeX: (t) => hourX(0) + ((t - hours[0].validTimeUtc) / 3600) * pph,
-    hourAt: (x) => clamp(Math.round((x - PAD.left - pph / 2) / pph), 0, hours.length - 1),
+    hourAt: (x) => (Number.isFinite(x) ? clamp(Math.round((x - PAD.left - pph / 2) / pph), 0, hours.length - 1) : 0),
   };
   m.spans = warningSpans(m, input.warnings ?? []);
   return m;

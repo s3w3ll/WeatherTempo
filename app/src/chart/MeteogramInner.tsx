@@ -137,9 +137,12 @@ export default function MeteogramInner(props: MeteogramProps) {
         <View onTouchStart={Platform.OS === "web" ? undefined : touch} onTouchMove={Platform.OS === "web" ? undefined : touch}>
           <Pressable
             onPress={(e) => {
-              setPointerY(e.nativeEvent.locationY);
-              const i = pick(e.nativeEvent.locationX);
-              setSelected((s) => (s === i ? null : i));   // tap again to dismiss
+              // react-native-web clicks have offsetX/Y; native presses have locationX/Y.
+              const n: any = e.nativeEvent;
+              setPointerY(n.offsetY ?? n.locationY ?? 0);
+              const i = pick(n.offsetX ?? n.locationX ?? 0);
+              // Touch: tap the same hour again to dismiss. Web: hover already selected it, so a click just keeps it.
+              setSelected((s) => (Platform.OS !== "web" && s === i ? null : i));
             }}
             accessibilityLabel="Forecast chart. Tap an hour for details."
             {...(webHover as object)}

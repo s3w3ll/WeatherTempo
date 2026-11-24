@@ -228,6 +228,16 @@ describe("warnings", () => {
   });
 });
 
+describe("hourAt", () => {
+  it("never returns an out-of-range index, even for a missing coordinate", () => {
+    const m = buildChartModel(base());
+    expect(m.hourAt(NaN)).toBe(0);
+    expect(m.hourAt(undefined as unknown as number)).toBe(0);
+    expect(m.hourAt(-500)).toBe(0);
+    expect(m.hourAt(1e9)).toBe(m.hours.length - 1);
+  });
+});
+
 describe("tooltip", () => {
   it("formats an hour and flags a warning", () => {
     const t0 = hours[0].validTimeUtc;
