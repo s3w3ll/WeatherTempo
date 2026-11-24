@@ -1,9 +1,11 @@
 import Feather from "@expo/vector-icons/Feather";
-import React, { useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { SkiaGate } from "../chart/SkiaGate";
 import type { TideMiniProps } from "../chart/TideMiniInner";
-import { buildTideModel, layoutTideCards, TIDE_HIGH_COLOR, TIDE_LOW_COLOR } from "../chart/tideModel";
+import { buildTideModel, cardEvents, layoutTideCards, tideScrollForNow, TIDE_HIGH_COLOR, TIDE_LOW_COLOR } from "../chart/tideModel";
+import type { HourlyHour } from "../core/payload";
+import { KEYS, load, save } from "../data/storage";
 import { DARK_PALETTE, LIGHT_PALETTE } from "../chart/palette";
 import { getNextTides, tideHeight } from "../core/tides";
 import type { Location } from "../core/types";
@@ -13,14 +15,20 @@ import { Card, Txt } from "./kit";
 const CHART_H = 200;
 const TIP_W = 170;
 const CARD_H = 62;   // height of a tide card
+const ZOOMS = [1, 2, 3, 4, 5] as const;
 const LEAD = 8;      // length of the line from the curve point down to its card
 
 /** Tide curve for today and tomorrow, the level now, and the next four highs/lows. */
-export function TidesCard({ location, nowMs }: { location: Location; nowMs: number }) {
+export function TidesCard({ location, nowMs, hourly }: { location: Location; nowMs: number; hourly: HourlyHour[] }) {
   const { tokens } = useSettings();
   const port = location.tidePort;
   const [width, setWidth] = useState(0);
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [days, setDays] = useState<number>(3);
+  const scroller = useRef<any>(null);
+  useEffect(() => {
+    load(KEYS.tideDays).then((v) => { const n = Number(v); if (ZOOMS.includes(n as 1)) setDays(n); });
+  }, []);
   // Recomputed once a minute is plenty; the memo key rounds `now` to the minute.
   const minute = Math.floor(nowMs / 60_000);
 
@@ -36,10 +44,20 @@ export function TidesCard({ location, nowMs }: { location: Location; nowMs: numb
     };
   }, [port, minute]);
 
+  // Same first hour, hour count and zoom as the weather chart, so the x-axes line up.
+  const t0 = hourly[0]?.validTimeUtc;
   const model = useMemo(
-    () => (port && width > 0 ? buildTideModel(port, location.timezone, minute * 60_000, width, CHART_H, location.lat, location.lon) : null),
-    [port, location.timezone, location.lat, location.lon, minute, width],
+    () => (port && width > 0 && t0 ? buildTideModel(port, minute * 60_000, {
+      t0Sec: t0, hours: hourly.length, days, viewportWidth: width, H: CHART_H, lat: location.lat, lon: location.lon,
+    }) : null),
+    [port, t0, hourly.length, days, width, location.lat, location.lon, minute],
   );
+  // Opening, zoom or location change: put "now" about 30% in.
+  useEffect(() => {
+    if (!model || !width) return;
+    scroller.current?.scrollTo({ x: tideScrollForNow(model, minute * 60_000, width), animated: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, width, port, !!model]);
   const P = tokens.scheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
   const sky = { day: P.bgDay, twilight: P.bgTwilight, night: P.bgNight };
 
@@ -51,10 +69,11 @@ export function TidesCard({ location, nowMs }: { location: Location; nowMs: numb
   const hover = model && hoverX != null ? model.hover(hoverX) : null;
   let cursorY: number | null = null;
   if (hover && model) {
-    const i = Math.round(((hover.timeMs - model.startMs) / model.spanMs) * (model.pts.length - 1));
+    const i = Math.round(((hover.timeMs - model.startMs) / (model.endMs - model.startMs)) * (model.pts.length - 1));
     cursorY = model.pts[Math.max(0, Math.min(model.pts.length - 1, i))].y;
   }
-  const tipLeft = hoverX != null && width ? Math.min(Math.max(0, hoverX + 8), Math.max(0, width - TIP_W)) : 0;
+  const tipLeft = hoverX != null && model ? Math.min(Math.max(0, hoverX + 8), Math.max(0, model.W - TIP_W)) : 0;
+  const pickZoom = (n: number) => { setDays(n); setHoverX(null); save(KEYS.tideDays, String(n)); };
   const webHover = Platform.OS === "web"
     ? {
         onPointerMove: (e: any) => setHoverX(e.nativeEvent.offsetX ?? e.nativeEvent.locationX ?? 0),
@@ -80,81 +99,96 @@ export function TidesCard({ location, nowMs }: { location: Location; nowMs: numb
             )}
           </View>
         )}
+        <View style={styles.zoom} accessibilityRole="radiogroup">
+          <Txt tone="muted" style={styles.zoomLabel}>Zoom:</Txt>
+          {ZOOMS.map((n) => {
+            const on = n === days;
+            return (
+              <Pressable key={n} onPress={() => pickZoom(n)} accessibilityRole="radio" accessibilityState={{ selected: on }}
+                accessibilityLabel={`${n} day${n > 1 ? "s" : ""}`}
+                style={[styles.zoomBtn, { borderColor: tokens.cardBorder, backgroundColor: on ? tokens.selectBgHi : tokens.selectBg }]}>
+                <Txt tone={on ? "strong" : "muted"} style={[styles.zoomText, on && styles.bold]}>{n}d</Txt>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
-      <View onLayout={(e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width))}
-        style={[styles.chart, { backgroundColor: tokens.tideCanvas }]}>
-        {model && (
-          <Pressable
-            onPress={(e) => {
-              const x = e.nativeEvent.locationX;
-              setHoverX((cur) => (cur != null && Math.abs(cur - x) < 6 ? null : x));   // tap the same spot to dismiss
-            }}
-            accessibilityLabel="Tide curve. Tap a time for the water level."
-            {...(webHover as object)}
-          >
-            <SkiaGate<TideMiniProps>
-              web={() => import("../chart/TideMiniInner")}
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              native={() => require("../chart/TideMiniInner").default}
-              height={CHART_H}
-              props={{
-                model, curve: tokens.tideCurve, fillA: tokens.tideFillA, fillB: tokens.tideFillB, fillC: tokens.tideFillC,
-                bg: tokens.tideCanvas,
-                skyColors: sky, cursorX: hover ? hoverX : null, cursorY,
-              }}
-            />
-          </Pressable>
-        )}
-        {hover && (
-          <View pointerEvents="none"
-            style={[styles.tip, { left: tipLeft, width: TIP_W, backgroundColor: tokens.selectBg, borderColor: tokens.cardBorder }]}>
-            <Txt tone="strong" style={styles.tipTime}>
-              {new Date(hover.timeMs).toLocaleDateString("en-NZ", { timeZone: location.timezone, weekday: "short", day: "numeric", month: "short" })}
-              {" "}{fmt(new Date(hover.timeMs))}
-              {hover.near
-                ? <Txt style={{ color: hover.near === "high" ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }}>{` · ${hover.near === "high" ? "High" : "Low"}`}</Txt>
-                : null}
-            </Txt>
-            <View style={styles.tipRow}>
-              <Txt tone="muted" style={styles.tipLabel}>Height</Txt>
-              <Txt tone="strong" style={styles.tipVal}>{hover.height} m</Txt>
-            </View>
-          </View>
-        )}
-      </View>
+      {/* One scrolling strip: the curve, then each upcoming high/low under its own point, so it reads
+          left to right in time. Zoomed out, neighbouring cards are thinned so none overlap. */}
+      <View onLayout={(e: LayoutChangeEvent) => setWidth(Math.round(e.nativeEvent.layout.width))}>
+        {view.events.length === 0 && <Txt tone="muted">No tide data available</Txt>}
+        {model && (() => {
+          const gap = 6;
+          const roomy = model.pph * 5 >= 100;
+          const cardW = roomy ? 92 : 64;
+          const shown = cardEvents(model, minute * 60_000, cardW + gap);
+          const lefts = layoutTideCards(shown.map((e) => e.x), model.W, cardW, gap);
+          return (
+            <ScrollView ref={scroller} horizontal showsHorizontalScrollIndicator={days < 5}>
+              <View style={{ width: model.W }}>
+                <View style={[styles.chart, { backgroundColor: tokens.tideCanvas }]}>
+                  <Pressable
+                    onPress={(e) => {
+                      const n: any = e.nativeEvent;
+                      const x = n.offsetX ?? n.locationX ?? 0;
+                      // Touch: tap the same spot again to dismiss. Web: hover already selected it.
+                      setHoverX((cur) => (Platform.OS !== "web" && cur != null && Math.abs(cur - x) < 6 ? null : x));
+                    }}
+                    accessibilityLabel="Tide curve. Tap a time for the water level."
+                    {...(webHover as object)}
+                  >
+                    <SkiaGate<TideMiniProps>
+                      web={() => import("../chart/TideMiniInner")}
+                      // eslint-disable-next-line @typescript-eslint/no-require-imports
+                      native={() => require("../chart/TideMiniInner").default}
+                      height={CHART_H}
+                      props={{
+                        model, curve: tokens.tideCurve, fillA: tokens.tideFillA, fillB: tokens.tideFillB, fillC: tokens.tideFillC,
+                        bg: tokens.tideCanvas, skyColors: sky, cursorX: hover ? hoverX : null, cursorY,
+                      }}
+                    />
+                  </Pressable>
+                  {hover && (
+                    <View pointerEvents="none"
+                      style={[styles.tip, { left: tipLeft, width: TIP_W, backgroundColor: tokens.selectBg, borderColor: tokens.cardBorder }]}>
+                      <Txt tone="strong" style={styles.tipTime}>
+                        {new Date(hover.timeMs).toLocaleDateString("en-NZ", { timeZone: location.timezone, weekday: "short", day: "numeric", month: "short" })}
+                        {" "}{fmt(new Date(hover.timeMs))}
+                        {hover.near
+                          ? <Txt style={{ color: hover.near === "high" ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }}>{` · ${hover.near === "high" ? "High" : "Low"}`}</Txt>
+                          : null}
+                      </Txt>
+                      <View style={styles.tipRow}>
+                        <Txt tone="muted" style={styles.tipLabel}>Height</Txt>
+                        <Txt tone="strong" style={styles.tipVal}>{hover.height} m</Txt>
+                      </View>
+                    </View>
+                  )}
+                </View>
 
-      {/* Each next high/low sits under its own point on the curve, so the row reads left to right in time. */}
-      {view.events.length === 0 && <Txt tone="muted">No tide data available</Txt>}
-      {model && (() => {
-        // The chart's own events (so each card matches its point exactly): the next four from now.
-        const shown = model.events
-          .filter((e) => e.time.getTime() >= minute * 60_000)
-          .slice(0, 4)
-          .map((e) => ({ ev: e, x: e.x }));
-        const gap = 6;
-        const cardW = Math.max(60, Math.min(104, Math.floor((width - gap * (shown.length - 1)) / Math.max(1, shown.length))));
-        const lefts = layoutTideCards(shown.map((e) => e.x), width, cardW, gap);
-        return (
-          <View style={{ height: CARD_H + LEAD }}>
-            {shown.map(({ ev, x }, i) => {
-              const high = ev.type === "high";
-              return (
-                <React.Fragment key={ev.time.getTime()}>
-                  <View pointerEvents="none"
-                    style={[styles.lead, { left: Math.round(x), backgroundColor: high ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }]} />
-                  <View style={[styles.event, { left: lefts[i], width: cardW, top: LEAD, backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
-                    accessible accessibilityLabel={`${high ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`}>
-                    <Txt style={styles.type} numberOfLines={1}>{high ? "🌊 High" : "🏖️ Low"}</Txt>
-                    <Txt tone="strong" style={styles.time} numberOfLines={1}>{fmt(ev.time)}</Txt>
-                    <Txt tone="muted" style={styles.height}>{ev.height.toFixed(1)} m</Txt>
-                  </View>
-                </React.Fragment>
-              );
-            })}
-          </View>
-        );
-      })()}
+                <View style={{ width: model.W, height: CARD_H + LEAD }}>
+                  {shown.map((ev, i) => {
+                    const high = ev.type === "high";
+                    return (
+                      <React.Fragment key={ev.time.getTime()}>
+                        <View pointerEvents="none"
+                          style={[styles.lead, { left: Math.round(ev.x), backgroundColor: high ? TIDE_HIGH_COLOR : TIDE_LOW_COLOR }]} />
+                        <View style={[styles.event, { left: lefts[i], width: cardW, top: LEAD, backgroundColor: tokens.stat, borderColor: tokens.cardBorder }]}
+                          accessible accessibilityLabel={`${high ? "High" : "Low"} tide at ${fmt(ev.time)}, ${ev.height.toFixed(1)} metres`}>
+                          <Txt style={styles.type} numberOfLines={1}>{high ? "🌊 High" : "🏖️ Low"}</Txt>
+                          <Txt tone="strong" style={styles.time} numberOfLines={1}>{fmt(ev.time)}</Txt>
+                          <Txt tone="muted" style={styles.height}>{ev.height.toFixed(1)} m</Txt>
+                        </View>
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+          );
+        })()}
+      </View>
     </Card>
   );
 }
@@ -169,6 +203,11 @@ const styles = StyleSheet.create({
   nowLabel: { fontSize: 12 },
   nowValue: { fontSize: 18, fontWeight: "600" },
   chart: { height: CHART_H, borderRadius: 12, overflow: "hidden", position: "relative" },
+  zoom: { flexDirection: "row", alignItems: "center", gap: 6 },
+  zoomLabel: { fontSize: 12 },
+  zoomBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 4, paddingHorizontal: 9 },
+  zoomText: { fontSize: 12 },
+  bold: { fontWeight: "700" },
   tip: {
     position: "absolute", top: 6, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, gap: 2,
     shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },

@@ -67,7 +67,7 @@ function Dashboard() {
               <DayCards data={data} tz={location.timezone} nowSec={nowMs / 1000} />
               <ChartSection data={data} location={location} warnings={weather.warnings} nowMs={nowMs} />
               <HourlyTable hourly={data.hourly} tz={location.timezone} nowSec={nowMs / 1000} />
-              <TidesCard location={location} nowMs={nowMs} />
+              <TidesCard location={location} nowMs={nowMs} hourly={data.hourly} />
             </>
           ) : (
             <ActivityIndicator style={styles.spinner} color={tokens.textMuted} />

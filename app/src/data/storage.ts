@@ -7,6 +7,7 @@ export const KEYS = {
   theme: "weatherTempo.theme",
   location: "weatherTempo.location",
   chartDays: "weatherTempo.chartDays",
+  tideDays: "weatherTempo.tideDays",
   alerts: "weatherTempo.alerts",
   warningMemory: "weatherTempo.warningMemory",
   diagnostics: "weatherTempo.diagnostics",
