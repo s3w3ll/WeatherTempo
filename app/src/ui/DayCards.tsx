@@ -49,10 +49,11 @@ function DayCard({ fc, tz }: { fc: DayForecast | null; tz: string }) {
 
       <View style={styles.row}>
         <Txt style={styles.icon}>💧</Txt>
-        <View style={styles.humidity}>
-          <Txt style={styles.small}><Txt tone="muted">Hi </Txt><Txt style={{ color: tokens.blue }}>{fc.humidity.max.val != null ? `${fc.humidity.max.val}%` : "—"}</Txt><Txt tone="muted"> {h(fc.humidity.max.utcSec, tz)}</Txt></Txt>
-          <Txt style={styles.small}><Txt tone="muted">Lo </Txt><Txt style={{ color: tokens.blue }}>{fc.humidity.min.val != null ? `${fc.humidity.min.val}%` : "—"}</Txt><Txt tone="muted"> {h(fc.humidity.min.utcSec, tz)}</Txt></Txt>
-        </View>
+        {/* One line on any width: shrinks the text a little on a narrow phone card rather than wrapping. */}
+        <Txt style={[styles.small, styles.grow]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}
+          accessibilityLabel={`Humidity high ${fc.humidity.max.val ?? "unknown"} percent, low ${fc.humidity.min.val ?? "unknown"} percent`}>
+          <Txt tone="muted">↑</Txt><Txt style={{ color: tokens.blue }}>{fc.humidity.max.val != null ? `${fc.humidity.max.val}%` : "—"}</Txt><Txt tone="muted"> {h(fc.humidity.max.utcSec, tz)}  ↓</Txt><Txt style={{ color: tokens.blue }}>{fc.humidity.min.val != null ? `${fc.humidity.min.val}%` : "—"}</Txt><Txt tone="muted"> {h(fc.humidity.min.utcSec, tz)}</Txt>
+        </Txt>
       </View>
 
       <Sep />
@@ -130,7 +131,7 @@ const styles = StyleSheet.create({
   value: { fontSize: 14, fontWeight: "600" },
   row: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
   icon: { fontSize: 14, width: 20 },
-  humidity: { flex: 1, flexDirection: "row", flexWrap: "wrap", columnGap: 10 },
+  grow: { flex: 1 },
   sep: { height: StyleSheet.hairlineWidth },
   sun: { flexDirection: "row", gap: 16 },
   sunItem: { flexDirection: "row", alignItems: "center", gap: 5 },
