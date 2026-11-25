@@ -104,6 +104,18 @@ function degToCardinal(deg) {
   return dirs[Math.round((deg || 0) / 22.5) % 16];
 }
 
+// ── UV at the hour ───────────────────────────────────────────────────────────
+// Open-Meteo's hourly uv_index at time t is the mean over the hour BEFORE t,
+// so its curve runs ~30 min late (clear-sky peak at 14:00 vs solar noon ~13:17
+// in Christchurch; NIWA's instantaneous forecast peaks at 13:00). Averaging the
+// slot with the next one centres it back on t. Last slot keeps its raw value.
+function uvAtHour(uv, i) {
+  const a = uv[i], b = uv[i + 1];
+  if (a == null) return null;
+  const v = b == null ? a : (a + b) / 2;
+  return +v.toFixed(2);
+}
+
 // ── Precipitation type from WMO code ─────────────────────────────────────────
 function precipType(code) {
   if (code >= 71 && code <= 77) return "snow";
@@ -539,7 +551,7 @@ export default {
         precipChance:          hrPrecP[i] !== undefined  ? Math.round(hrPrecP[i])  : null,
         precipType:            precipType(code),
         pressureMeanSeaLevel:  hrPres[i]  !== undefined  ? +hrPres[i].toFixed(1)   : null,
-        uvIndex:               hrUv[i]    !== undefined  ? +hrUv[i].toFixed(2)     : null,
+        uvIndex:               uvAtHour(hrUv, i),
         iconCode:              wmoToIcon(code, id),
         dayOrNight:            id ? "D" : "N",
         wxPhraseMedium:        WMO_PHRASE[code] ?? "Unknown",
