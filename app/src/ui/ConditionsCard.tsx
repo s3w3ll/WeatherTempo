@@ -101,7 +101,7 @@ export function ConditionsCard({ data, tz, nowMs }: { data: WeatherPayload; tz: 
         <Stat oneRow={oneRow} icon="cloud-rain" value={agg.rainMm != null ? `${agg.rainMm} mm` : "—"}
           label={agg.peakChance != null ? `Peak ${agg.peakChance}%` : "Rain today"} />
         <Stat oneRow={oneRow} icon="sun" value={c.uvIndex != null ? `Now ${uvLabel(c.uvIndex)}` : "—"}
-          label={uv.peakUV != null ? `Peak ${uvLabel(uv.peakUV)}${uv.uvWindow ? ` · ${uv.uvWindow}` : ""}` : "UV"} />
+          label={uv.peakUV != null ? `Peak ${uvLabel(uv.peakUV)}${uv.uvWindow ? ` · UV 3+ ${uv.uvWindow}` : ""}` : "UV"} />
       </View>
 
       {/* Row 3: astronomy */}

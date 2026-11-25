@@ -78,7 +78,7 @@ function DayCard({ fc, tz }: { fc: DayForecast | null; tz: string }) {
         <Txt style={styles.icon}>☀️</Txt>
         <View>
           <Txt style={[styles.value, { color: "#a050d0" }]}>UV {fc.uv.peak != null ? uvLabel(fc.uv.peak) : "—"}</Txt>
-          <Txt tone="muted" style={styles.small}>{fc.uv.window ?? "Below 3"}</Txt>
+          <Txt tone="muted" style={styles.small}>{fc.uv.window ? `3+ ${fc.uv.window}` : "Below 3"}</Txt>
         </View>
       </View>
 

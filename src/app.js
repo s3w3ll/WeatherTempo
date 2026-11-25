@@ -548,8 +548,8 @@
   /**
    * Returns:
    *   peakUV   — highest UV index in today's remaining forecast hours
-   *   uvWindow — "10am–3pm" string covering all contiguous UV≥4 hours today,
-   *              or null when UV stays below 4 all day
+   *   uvWindow — "10am–3pm" string spanning today's UV≥3 hours,
+   *              or null when UV stays below 3 all day
    */
   function uvInfo(hourly) {
     const nowDate = new Date().toLocaleDateString("en-NZ", {
@@ -813,7 +813,7 @@
       : "—";
 
     const uvPeak  = fc.uv.peak != null ? uvLabel(fc.uv.peak) : "—";
-    const uvWin   = fc.uv.window || "Below 3";
+    const uvWin   = fc.uv.window ? `3+ ${fc.uv.window}` : "Below 3";
 
     const presHi  = fc.pressure.max.val != null ? Math.round(fc.pressure.max.val) + " hPa" : "—";
     const presHiT = fmtH(fc.pressure.max.utcSec);
@@ -973,7 +973,7 @@
     const { peakUV, uvWindow } = uvInfo(data.hourly || []);
     el("uv-index").textContent = c.uvIndex != null ? `Current: ${uvLabel(c.uvIndex)}` : "—";
     el("uv-label").textContent = peakUV != null
-      ? `Peak: ${uvLabel(peakUV)}${uvWindow ? ` · ${uvWindow}` : ""}`
+      ? `Peak: ${uvLabel(peakUV)}${uvWindow ? ` · UV 3+ ${uvWindow}` : ""}`
       : "UV";
 
     // Astronomy
